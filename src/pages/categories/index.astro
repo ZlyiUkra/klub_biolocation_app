@@ -1,0 +1,237 @@
+---
+// The Categories menu item. Port of
+// ../klub_biolocation/themes/void/layouts/taxonomy/category.terms.html, following the
+// procedure in MIGRATION-PLAN.md §4.1. Class attributes are copied verbatim.
+//
+// The rendered Hugo page (../klub_biolocation/public/categories/index.html) was the
+// reference for everything the template alone does not settle, and it is what the result
+// was diffed against.
+//
+// HOW THE GO TEMPLATE MAPS ONTO THIS FILE
+//
+//   .Title                        -> the `title` const. Hugo names a taxonomy terms page
+//                                    after the taxonomy, so it is the literal "Categories".
+//   .Data.Terms.Alphabetical      -> getTerms("categories"), which sorts by the front
+//                                    matter name. Hugo orders by the term key, not by the
+//                                    title-cased label - see lib/posts.ts.
+//   $key (the range index)        -> the second argument of .map(), used for the
+//                                    `category-N` id that ties a button to its panel.
+//   .Page.Title                   -> term.title. The front matter says "blog", the page
+//                                    shows "Blog"; Hugo title-cases term titles, which is
+//                                    what lib/titleize.ts reproduces.
+//   .Count                        -> category.posts.length.
+//   .Pages                        -> category.posts, newest first, as Hugo's term pages do.
+//   .Date.Format "2006-01-02"     -> formatIsoDate(). Hugo formats in the offset written in
+//                                    the front matter, not in UTC - see lib/date.ts.
+//   .RelPermalink                 -> `/posts/<slug>/`, matching the route in
+//                                    src/pages/posts/[slug].astro.
+//   i18n "back_to_home"           -> t.back_to_home from src/i18n/strings.ts.
+//   i18n "categories_help_text"   -> NOT a string in strings.ts; see the `helpText` const.
+//
+// DECISIONS WORTH KNOWING
+//
+// The accordion starts closed and is opened by the script at the bottom of this file,
+// exactly as in Hugo. Rendering it open, or replacing the script with a details/summary
+// element, would both be visible changes.
+//
+// The article blocks are deliberately not anchors. The theme makes the whole card
+// clickable from a `data-href` attribute and a click handler, so that markup is reproduced
+// rather than "improved" - an anchor would render with different default styling.
+//
+// The count badge is filled with set:html; the comment at that line explains why.
+//
+// VERIFIED: the markup matches the Hugo page except where Hugo's HTML minifier caused the
+// difference (dropped xmlns, collapsed whitespace, a shortened SVG path command,
+// self-closing versus explicit end tags). Screenshots at 1280x900 are pixel-identical in
+// dark mode; in light mode 55 pixels of 1,152,000 differ by at most 4/255, all of them on
+// the antialiased edges of the two count digits. The colours themselves match, so that
+// residual is rasterisation noise and was left alone.
+//
+// Do not write a literal script or style tag inside these comments: Vite's dependency
+// pre-scan looks for those tokens in .astro files without parsing the TypeScript, so it
+// would try to execute the rest of the comment as JavaScript and `astro dev` would fail.
+import Base from "../../layouts/Base.astro";
+// Changed 2026-09-22: the terms come from lib/terms.ts, which collects them over the posts
+// and the videos, instead of from lib/posts.ts, which saw the posts only. A term now holds
+// cards rather than posts, so this route no longer maps anything - the entries arrive flat
+// and the video lectures appear beside the articles. REVIEW-VIDEO.md, remarks 2 and 3.
+import { getTerms } from "../../lib/terms";
+import { formatIsoDate } from "../../lib/date";
+// Changed 2026-10-12 with the two interface languages (src/i18n/lang.ts): ui (was t), the title
+// from site.sections, and every label through T.
+// import { t } from "../../i18n/strings";
+import { ui } from "../../i18n/strings";
+import { site } from "../../config";
+import T from "../../components/T.astro";
+
+// Hugo's `.Data.Terms.Alphabetical`.
+// Changed 2026-10-10 (T034): the viewer's cookie is passed on, for phase 2.
+const context = { cookie: Astro.request.headers.get("cookie") ?? undefined };
+const categories = await getTerms("categories", context);
+
+// Hugo titles a taxonomy terms page after the taxonomy itself, so this is a literal rather
+// than something read from config. It fills both the h1 and, through Base, the title tag
+// ("Categories | Radiesthesia Club", as the Hugo page has).
+// Changed 2026-10-12: the section's name in both languages, from site.sections (it was the literal
+// "Categories"; the reason above for not reading it from the config is gone with Hugo's i18n).
+const title = site.sections.categories;
+
+// The template asks for `categories_help_text` but supplies a fallback:
+//   {{ i18n "categories_help_text" | default "Click any category to..." }}
+// That key does NOT exist in the theme's en.toml, so Hugo renders the fallback. The
+// literal therefore belongs here, and the key must not be invented in src/i18n/strings.ts -
+// that file is a faithful copy of the TOML. See MIGRATION-PLAN.md §4.1, step 3.
+// Changed 2026-10-12: the paragraph above no longer holds (strings.ts is the home of every interface
+// string now); the literal is ui.categories_help_text, in both languages.
+const helpText = ui.categories_help_text;
+
+// Changed 2026-10-10 (T034 of specs/001-self-hosted-club-site): the `prerender = true` line that T032 put here is gone.
+// Rendered on demand from the backend.
+---
+
+<Base title={title}>
+  <div class="mx-auto max-w-4xl px-4 py-8">
+    {/* Changed 2026-10-12: title and helpText through T, both languages. */}
+    <h1 class="mb-8 text-center text-3xl font-bold text-gray-800">
+      <T s={title} />
+    </h1>
+
+    <!-- Brief description -->
+    <div class="mb-8 text-center text-sm text-gray-600">
+      <p><T s={helpText} /></p>
+    </div>
+
+    <!-- Categories accordion -->
+    <div class="space-y-4">
+      {
+        /* `key` is Hugo's range index: it only has to make the button's data-target and
+        the panel's id agree, which is how the script finds what to open. */
+        categories.map((category, key) => (
+          <div class="overflow-hidden rounded-lg bg-white shadow-sm">
+            {/* Changed 2026-09-30, from a Tailwind 3.4 audit the owner ordered: a keyboard focus
+            ring beside the theme's focus:outline-none (Outline Style, "Removing outlines"). Inset,
+            because the card around the button is overflow-hidden and would clip an outer ring. */}
+            <button
+              class="category-toggle flex w-full items-center justify-between px-6 py-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+              data-target={`category-${key}`}
+            >
+              <div class="flex items-center">
+                <span class="font-medium text-gray-800">{category.title}</span>
+                {/* The count goes in with set:html so that the badge contains exactly
+                "1" and no surrounding whitespace, as Hugo's minified output does. Written
+                as a normal child, Astro keeps Prettier's newlines as text nodes; CSS then
+                trims them, but the glyph is rasterised at a different subpixel offset and
+                the page stops being pixel-identical to the Hugo one. */}
+                <span
+                  class="category-count-badge ml-2 rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-600"
+                  set:html={String(category.cards.length)}
+                />
+              </div>
+              <svg
+                class="category-icon h-5 w-5 transform text-gray-500 transition-transform duration-200"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+            </button>
+
+            <div
+              id={`category-${key}`}
+              class="category-content hidden border-t border-gray-100 px-6 pb-4"
+            >
+              <div class="space-y-3 pt-3">
+                {/* Hugo's `.RelPermalink`. Not an href: the card itself is the click
+                target, handled by the script at the bottom of this file. */}
+                {/* Changed 2026-09-22 with the terms spanning both collections. Two things
+                were wrong here the moment a lecture could appear in a category: the address was
+                assembled on the spot as /posts/ plus the slug, which is a second definition of a
+                rule that belongs to postUrl() in lib/posts.ts, and it would have sent every
+                lecture to a post address that does not exist. A card carries its own url, built
+                by postUrl() or videoUrl(), so a lecture opens /video/<slug>/ - the jump from a
+                category to the video the owner asked for. */}
+                {category.cards.map((card) => (
+                  <article
+                    class="article-link cursor-pointer rounded p-3 transition-colors hover:bg-gray-50 dark:hover:bg-slate-800"
+                    data-href={card.url}
+                  >
+                    <h3 class="mb-1 text-base font-medium text-gray-800">
+                      {card.title}
+                    </h3>
+                    <div class="text-xs text-gray-500">
+                      {formatIsoDate(card.date)}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+
+    <!-- Back to home link -->
+    <div class="mt-10 text-center">
+      <a
+        href="/"
+        class="inline-flex items-center text-gray-600 transition-colors hover:text-green-600"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="mr-2 h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+        </svg>
+        {/* Changed 2026-10-12: both languages (was t.back_to_home). */}
+        <T s={ui.back_to_home} />
+      </a>
+    </div>
+  </div>
+
+  <!-- Accordion script -->
+  <script is:inline>
+    document.addEventListener("DOMContentLoaded", function () {
+      const toggles = document.querySelectorAll(".category-toggle");
+
+      toggles.forEach((toggle) => {
+        toggle.addEventListener("click", function () {
+          const targetId = this.getAttribute("data-target");
+          const target = document.getElementById(targetId);
+          const icon = this.querySelector(".category-icon");
+
+          if (target.classList.contains("hidden")) {
+            target.classList.remove("hidden");
+            icon.classList.add("rotate-180");
+          } else {
+            target.classList.add("hidden");
+            icon.classList.remove("rotate-180");
+          }
+        });
+      });
+
+      // Whole-card click handling for the article blocks
+      const articleLinks = document.querySelectorAll(".article-link");
+      articleLinks.forEach((article) => {
+        article.addEventListener("click", function () {
+          const href = this.getAttribute("data-href");
+          if (href) {
+            window.location.href = href;
+          }
+        });
+      });
+    });
+  </script>
+</Base>

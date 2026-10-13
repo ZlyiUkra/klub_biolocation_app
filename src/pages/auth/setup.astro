@@ -1,0 +1,253 @@
+---
+// /auth/setup/ - the first superuser on a hosting with no command line (T169 of specs/001-self-hosted-club-site; the
+// owner's choices of 2026-10-11). Added 2026-10-11.
+//
+// The page is a plain form that posts to `POST /api/setup` (server/src/users/setup-routes.ts). It exists only while
+// the backend says the door is open: no account holds the role yet, or the owner has set ALLOW_SUPERUSER_SETUP=1 in the
+// hosting's settings. Otherwise it answers 404, the same as an address that never existed.
+//
+// Decisions that would otherwise look like mistakes:
+// - The code the visitor types is the SETUP_CODE of the hosting's settings, or the code the server printed in its
+//   log when none is set. The page says nothing about which; it is the owner's to know.
+// - One sentence for a refused code. The server answers every kind of failure alike so that the page cannot be used to
+//   learn anything, and this page does not try to tell them apart either. Only the address and the new password have
+//   sentences of their own.
+// - The ten recovery codes of the new superuser are returned by the answer that made the account and are shown here
+//   once, with a copy button; nothing keeps them for later (REWRITE.md, the note on the data-model deviation).
+// - The page does not sign the visitor in: the password typed here is typed again on the sign-in page, which is where
+//   the owner learns it was written right.
+// - noindex: nobody should find this by searching, although the page is dead the day the first superuser exists.
+import Base from "../../layouts/Base.astro";
+import AuthField from "../../components/AuthField.astro";
+// Changed 2026-10-12 (T178) with the two interface languages (src/i18n/lang.ts): every word of the page is in the
+// dictionary (src/i18n/strings.ts) and printed through T, so a switch of language changes it in place.
+import { ui } from "../../i18n/strings";
+import T from "../../components/T.astro";
+import { site } from "../../config";
+import { getSetupOpen } from "../../lib/api-client";
+
+if (!(await getSetupOpen())) return Astro.rewrite("/404");
+---
+
+<Base title={ui.setup_title} noindex>
+  <section class="mx-auto max-w-md">
+    <h1 class="mb-6 text-2xl font-bold"><T s={ui.setup_title} /></h1>
+    <div id="setup-intro">
+      <p class="mb-4 text-sm">
+        <T s={ui.setup_intro} />
+      </p>
+      <form id="setup-form" class="space-y-4" novalidate>
+        <AuthField
+          id="setup-code"
+          name="code"
+          label={ui.setup_code}
+          autocomplete="off"
+          required
+        />
+        <AuthField
+          id="setup-email"
+          name="email"
+          label={ui.form_email}
+          type="email"
+          autocomplete="username"
+          required
+        />
+        <AuthField
+          id="setup-password"
+          name="password"
+          label={ui.form_password}
+          type="password"
+          autocomplete="new-password"
+          minlength={8}
+          required
+          toggle
+          hint={ui.form_password_min}
+        />
+        <AuthField
+          id="setup-repeat"
+          name="repeat"
+          label={ui.form_repeat_password}
+          type="password"
+          autocomplete="new-password"
+          required
+          toggle
+        />
+        <p
+          id="setup-message"
+          class="hidden rounded bg-gray-100 p-3 text-sm dark:bg-slate-800"
+          role="alert"
+        >
+        </p>
+        <button
+          id="setup-submit"
+          type="submit"
+          class="w-full rounded bg-blue-600 px-4 py-2 text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+                    <T s={ui.setup_submit} />
+        </button>
+      </form>
+    </div>
+
+    <div id="setup-done" hidden>
+      <p class="mb-4 rounded bg-gray-100 p-3 text-sm dark:bg-slate-800">
+        <T s={ui.setup_done} />
+      </p>
+      <ol
+        id="setup-codes"
+        class="ym-hide-content mb-4 list-decimal space-y-1 pl-6 font-mono text-sm"
+      >
+      </ol>
+      <p
+        id="setup-copy-message"
+        class="hidden rounded bg-gray-100 p-3 text-sm dark:bg-slate-800"
+        role="alert"
+      >
+      </p>
+      <div class="flex flex-wrap items-center gap-3">
+        <button
+          id="setup-copy"
+          type="button"
+          class="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 transition-opacity hover:opacity-80 dark:border-slate-600 dark:text-gray-200"
+        >
+                    <T s={ui.form_copy} />
+        </button>
+        <a
+          href={site.auth.signIn}
+          class="rounded bg-blue-600 px-4 py-2 text-white transition-opacity hover:opacity-90"
+          ><T s={ui.signin_submit} /></a
+        >
+      </div>
+    </div>
+    <noscript>
+      <p class="mt-4 text-sm"><T s={ui.setup_noscript} /></p>
+    </noscript>
+  </section>
+</Base>
+
+<script>
+  // Top level of the template, never inside an expression (CLAUDE.md, measured 2026-09-22).
+  import {
+    bindPasswordToggles,
+    commonRefusal,
+    messageArea,
+    sendJson,
+    waitLead,
+    } from "../../scripts/auth-forms";
+  import { ui } from "../../i18n/strings";
+  import type { Phrase } from "../../i18n/lang";
+
+  bindPasswordToggles();
+
+  const form = document.getElementById("setup-form");
+  const submit = document.getElementById("setup-submit");
+  const area = document.getElementById("setup-message");
+  const intro = document.getElementById("setup-intro");
+  const done = document.getElementById("setup-done");
+  const codesList = document.getElementById("setup-codes");
+  const copyButton = document.getElementById("setup-copy");
+  const copyArea = document.getElementById("setup-copy-message");
+
+  const value = (id: string): string => {
+    const element = document.getElementById(id);
+    return element instanceof HTMLInputElement ? element.value : "";
+  };
+  const passwordSentences: Record<string, Phrase> = {
+    too_short: ui.form_password_short,
+    too_long: ui.form_password_long,
+  };
+
+  if (
+    form instanceof HTMLFormElement &&
+    submit instanceof HTMLButtonElement &&
+    area instanceof HTMLElement &&
+    intro instanceof HTMLElement &&
+    done instanceof HTMLElement &&
+    codesList instanceof HTMLElement
+  ) {
+    const message = messageArea(area);
+    let shown: string[] = [];
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      message.clear();
+      if (
+        value("setup-code").trim() === "" ||
+        value("setup-email").trim() === "" ||
+        value("setup-password") === ""
+      ) {
+        message.show(ui.setup_fill_all);
+        return;
+      }
+      if (value("setup-password") !== value("setup-repeat")) {
+        message.show(ui.form_passwords_differ);
+        return;
+      }
+      submit.disabled = true;
+      const answer = await sendJson("POST", "/api/setup", {
+        code: value("setup-code").trim(),
+        email: value("setup-email").trim(),
+        password: value("setup-password"),
+      });
+
+      const codes = answer.body["codes"];
+      if (answer.status === 200 && Array.isArray(codes)) {
+        shown = codes.map(String);
+        codesList.replaceChildren(
+          ...shown.map((code) => {
+            const item = document.createElement("li");
+            item.textContent = code;
+            return item;
+          }),
+        );
+        // The typed secrets are not left in the fields.
+        for (const id of ["setup-code", "setup-password", "setup-repeat"]) {
+          const field = document.getElementById(id);
+          if (field instanceof HTMLInputElement) field.value = "";
+        }
+        intro.hidden = true;
+        done.hidden = false;
+        return;
+      }
+      if (answer.status === 404) {
+        // The door shut while the form was open (somebody else made the superuser, or the switch was taken away).
+        message.show(ui.setup_closed);
+        return;
+      }
+      if (answer.status === 429) {
+        message.countdown(answer.retryAfter || 60, waitLead, () => {
+          submit.disabled = false;
+        });
+        return;
+      }
+      submit.disabled = false;
+      const common = commonRefusal(answer);
+      if (common !== null) {
+        message.show(common);
+        return;
+      }
+      if (answer.body["field"] === "email") {
+        message.show(ui.setup_email_check);
+        return;
+      }
+      if (answer.body["field"] === "password") {
+        message.show(
+          passwordSentences[String(answer.body["problem"] ?? "")] ??
+            ui.setup_password_bad,
+        );
+        return;
+      }
+      message.show(ui.setup_code_wrong);
+    });
+
+    if (copyButton instanceof HTMLButtonElement) {
+      const copyMessage =
+        copyArea instanceof HTMLElement ? messageArea(copyArea) : null;
+      copyButton.addEventListener("click", () => {
+        void navigator.clipboard
+          .writeText(shown.join("\n"))
+          .then(() => copyMessage?.show(ui.form_codes_copied, "info"))
+          .catch(() => copyMessage?.show(ui.form_codes_copy_failed));
+      });
+    }
+  }
+</script>

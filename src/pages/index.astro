@@ -1,0 +1,75 @@
+---
+import Base from "../layouts/Base.astro";
+import Carousel from "../components/Carousel.astro";
+import TagCloud from "../components/TagCloud.astro";
+import { site } from "../config";
+// Added 2026-10-12 with the two interface languages (src/i18n/lang.ts): the menu names below.
+import T from "../components/T.astro";
+
+// Changed 2026-10-10 (T034 of specs/001-self-hosted-club-site): the `prerender = true` line that T032 put here is gone.
+// Rendered on demand; its tag cloud reads the backend (TagCloud.astro).
+---
+
+<Base>
+  <Carousel />
+  {
+    /* Changed the evening of 2026-09-25, the owner's decision: a guest sees the carousel and nothing
+    else on the home page, and the rest of the site only after signing in. Everything below the
+    carousel is one members-only block, which custom.css hides until the gate in Base.astro has
+    marked the document kb-member (AUTH.md section 10). The markup inside is unchanged; for a
+    member the page is what it was. openToGuests on the layout is what keeps a guest on this page
+    instead of sending them to the sign-in page, as every other page does. */
+  }
+  {
+    /* Reopened on 2026-09-25 after the colleague's review (AUTH.md section 11): the members-only wrapper is gone and a guest sees the whole home page again,
+    as before the gate. */
+  }
+  <div class="mx-auto max-w-3xl px-4 py-8 text-center md:py-12">
+    <h1 class="mb-6 text-3xl font-bold text-gray-800 md:text-4xl">
+      {site.title}
+    </h1>
+  </div>
+
+  <TagCloud />
+
+  <div class="mx-auto max-w-3xl px-4 py-8 text-center md:py-12">
+    {
+      /* Hugo renders .Content here. The site has no content/_index.md, so the Hugo
+    build emits this div empty too; home page copy would go in here. */
+    }
+    <div class="prose prose-lg md:prose-xl mx-auto"></div>
+
+    {
+      /* Changed 2026-09-22, the owner's call while the tag cloud was being built: this row and
+      the cloud trade places at 640px and are never on the screen together. Below 640px the
+      header menu is a hamburger, so this row is the navigation the page shows for itself, and
+      the cloud has no width to be a cloud in; from 640px up the header prints every menu item,
+      so the row would only repeat what the visitor can already see and the cloud takes the
+      space instead. The class was mt-12 flex, with no breakpoint, until today: the row used to
+      stand at every width, as it does in Hugo.
+
+      The breakpoint is the hamburger's, not a number chosen here - see the same note in
+      src/components/TagCloud.astro, which carries the mirror image of these classes.
+
+      Reversed the same evening, at the owner's word: the row is hidden below 640px and shown
+      from 640px up, and the cloud is the other way round. The paragraph above is kept because it
+      explains why the two swap at all; only which side each one takes has changed. */
+    }
+    <div class="mt-12 hidden flex-wrap justify-center gap-3 sm:flex">
+      {
+        site.menu.map((item) => (
+          <a
+            href={item.url}
+            class="group relative overflow-hidden rounded-full px-5 py-2.5 text-blue-700 dark:text-blue-300"
+          >
+            <span class="absolute inset-0 h-full w-full bg-blue-50 opacity-0 transition-opacity duration-300 group-hover:opacity-100 dark:bg-slate-700/50" />
+            <span class="relative z-10 transition-colors duration-300">
+              {/* Changed 2026-10-12: both languages (item.name is a Phrase). */}
+              <T s={item.name} />
+            </span>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</Base>

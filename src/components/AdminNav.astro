@@ -1,0 +1,83 @@
+---
+// The navigation row of the admin panel: back to the account page, and between the two panel pages.
+// Added 2026-10-02 at the owner's request ("there is no way back to the account page, from the posts
+// or from the users"). Not a port: the Hugo theme has no admin pages.
+//
+// One component for the two pages that show it, /admin/posts/ and /admin/users/, so the row cannot
+// differ between them. The addresses come from src/config.ts (site.auth.account and the two panel
+// pages in site.admin), the one home of every address the site builds by hand.
+//
+// Decisions that would otherwise look like mistakes:
+// - Plain markup with no script: the row is the same for every visitor, and the pages' scripts
+//   decide who may use them. A guest who opens the page is sent to sign-in by the page's script
+//   before the row matters.
+// - The page being shown is plain text with aria-current="page", not a link to itself, the way
+//   Pagination.astro marks the current page.
+// - The link classes are those of the panel links on the account page (src/pages/auth/account.astro).
+import { site } from "../config";
+// Added 2026-10-12 with the two interface languages (src/i18n/lang.ts): every label of the row in
+// both languages; the page names come from strings.ts, where the account page reads them too.
+import { ui } from "../i18n/strings";
+import { adminUi } from "../i18n/admin";
+import { langAttrs } from "../i18n/lang";
+import T from "./T.astro";
+
+interface Props {
+  // Changed 2026-10-13 (T107): "feedback" added, the fourth page.
+  // Changed 2026-10-13 (T110): "settings" added, the fifth page, the superuser's.
+  current: "posts" | "videos" | "users" | "feedback" | "settings";
+}
+
+const { current } = Astro.props;
+// Added 2026-10-13 (T110, T147): the settings page is the superuser's alone, so its link is drawn for the superuser
+// only (middleware.ts puts the flag into Astro.locals); for anyone else it would be a link to a 404.
+const showSettings = Astro.locals.superuser === true;
+const items = [
+  // Changed 2026-10-12: the labels are Phrases (they were "Публикации" and "Пользователи").
+  { key: "posts", href: site.admin.postsPage, label: ui.admin_posts_title },
+  // Added 2026-10-12 (T175): the videos page, between the posts and the users.
+  { key: "videos", href: site.admin.videosPage, label: ui.admin_videos_title },
+  { key: "users", href: site.admin.usersPage, label: ui.admin_users_title },
+  // Added 2026-10-13 (T107): the messages of the feedback form, after the users.
+  {
+    key: "feedback",
+    href: site.admin.feedbackPage,
+    label: ui.admin_feedback_title,
+  },
+  // Added 2026-10-13 (T110, T147): the superuser's settings, after the feedback page; see showSettings above.
+  ...(showSettings
+    ? [
+        {
+          key: "settings",
+          href: site.admin.settingsPage,
+          label: ui.admin_settings_title,
+        } as const,
+      ]
+    : []),
+] as const;
+const link = "text-blue-600 hover:underline dark:text-blue-400";
+---
+
+<nav
+  {...langAttrs({ "aria-label": adminUi.nav_label })}
+  class="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-gray-200 pb-3 text-sm dark:border-slate-700"
+>
+  {
+    /* Changed 2026-10-12: the labels of the row through T (the frontmatter's note). */
+  }
+  <a href={site.auth.account} class={link}>&larr; <T s={ui.auth_account} /></a>
+  <span aria-hidden="true" class="text-gray-400 dark:text-slate-500">|</span>
+  {
+    items.map((item) =>
+      item.key === current ? (
+        <span aria-current="page" class="font-semibold">
+          <T s={item.label} />
+        </span>
+      ) : (
+        <a href={item.href} class={link}>
+          <T s={item.label} />
+        </a>
+      ),
+    )
+  }
+</nav>

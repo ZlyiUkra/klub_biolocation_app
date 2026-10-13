@@ -1,0 +1,1291 @@
+---
+// /auth/account/ - the member's own page (T053, T146 and T166 of specs/001-self-hosted-club-site; FR-012, FR-013,
+// FR-018a).
+//
+// Rewritten on 2026-10-11 for the move off the previous sign-in provider. The page is rendered per request: the name,
+// the address, the status and the forced-change state come from the backend through the same `/api/auth/me` the
+// header uses, so they are in the first byte; only the list of devices and the forms need the browser.
+//
+// Changed 2026-10-11 (T166, T146): the layout of the previous provider's card is back - a menu on the left (Профиль,
+// Безопасность, Устройства; for a metr and an admin also the two panel pages; sign-out at the bottom) and the chosen
+// section on the right. The chosen section is the address hash (#profile, #security, #devices), so Back and a copied
+// link work; on a narrow screen the menu is a row above the content. The profile section edits the display name and the
+// login name (PATCH /api/auth/profile); the address is shown and cannot be changed yet (phase 9, FR-012a). The devices
+// are five to a page by the site's rule (site.pagination.pageSize and everyNumberUpTo, through AdminPager.astro).
+//
+// What carried over from the previous page, so that nothing the member had is lost: the status in words ("Ваш
+// статус"), the note a blocked member gets about who closed the access, the two panel links for a metr and an admin,
+// the list of active devices with the one in use marked, and sign-out.
+//
+// Decisions that would otherwise look like mistakes:
+// - A session that must change its password sees only the change form and a sign-out button: the server refuses it
+//   everything else (server/src/auth/routes.ts), and showing it buttons that would fail is worse than hiding them.
+// - A visitor with no session sees a short note and the sign-in link; the server-side redirect is T056's work.
+// - The status words are `site.admin.statusNames`, the one list the admin panel uses too.
+// - Every section but the first starts with the class `hidden`, and a noscript style shows them all, so a browser with
+//   no scripts reads three sections one under another instead of finding two of them gone. The section anchors are
+//   `#profile` and the like, while the sections themselves are `section-profile` and the like: the browser must not
+//   scroll to a section when the hash changes, the script swaps what is shown instead.
+import Base from "../../layouts/Base.astro";
+import AuthField from "../../components/AuthField.astro";
+import AdminPager from "../../components/AdminPager.astro";
+// Added 2026-10-12: the status names are Phrases (see `names` below).
+import { format, langAttrs, type Phrase, type Words } from "../../i18n/lang";
+import { ui } from "../../i18n/strings";
+import T from "../../components/T.astro";
+import { site } from "../../config";
+import { getViewerAccount, type ApiViewerAccount } from "../../lib/api-client";
+// Added 2026-10-11 (T152): the one definition of "the date lets in"; the page does not repeat the comparison.
+import { dateOpens, utcDay } from "../../lib/lecture-rules";
+
+let account: ApiViewerAccount | null = null;
+try {
+  account = await getViewerAccount({
+    cookie: Astro.request.headers.get("cookie") ?? undefined,
+  });
+} catch {
+  // The backend did not answer: the page shows the signed-out note rather than failing; the header already did the same.
+}
+// Changed 2026-10-12 (T178): the names are Phrases (site.admin.statusNames) and every sentence of the page is in the
+// dictionary (src/i18n/strings.ts), printed through T; the page follows a switch of language in place.
+const names: Record<string, Phrase> = site.admin.statusNames;
+const status = account?.status ?? "guest";
+const statusName: Words = names[status] ?? status;
+const mustChange = account?.mustChange ?? false;
+const isEditor = status === "admin" || status === "metr";
+// "мэтром" is the status written with the Russian э (the owner's word, 2026-10-11), as in site.admin.statusNames.
+// One string, so no stray space before the full stop (a sentence broken over an expression got one).
+// Changed 2026-10-11 (T055): an account that came in with the members import is blocked by nobody's hand (no blocker is
+// recorded), so the sentence names no one then, instead of crediting a мэтр that never did it.
+// Changed 2026-10-12 (T178): a Phrase; the "by whom" part is a Phrase of its own, empty when nobody is named.
+const blockedBy: Phrase =
+  account?.blockedBy === "admin"
+    ? ui.acct_by_admin
+    : account?.blockedBy === "metr"
+      ? ui.acct_by_metr
+      : { ru: "", en: "" };
+const blockedText = format(ui.acct_blocked, { by: blockedBy });
+
+// Added 2026-10-11 (T152): the line about the paid lectures under the status. The date is the account's own clock
+// (users.access_until, the last day counted in full); the editors have no end. The rule itself is the SQL function
+// lecture_view and `dateOpens`; this page only says it. A blocked account gets the sentence above and no second line.
+const dayText = (day: string): string => day.split("-").reverse().join(".");
+// Changed 2026-10-12 (T178): a Phrase, or null when there is no line to show (a blocked account).
+const lectureLine = ((): Phrase | null => {
+  if (status === "blocked") return null;
+  if (isEditor) return ui.acct_lectures_unlimited;
+  const until = account?.accessUntil ?? null;
+  if (until === null) return ui.acct_lectures_closed;
+  return format(
+    dateOpens(until, utcDay())
+      ? ui.acct_lectures_until
+      : ui.acct_lectures_ended,
+    { day: dayText(until) },
+  );
+})();
+
+// The menu: the three sections, then (editors only) the panel pages. Classes are those of the site's own controls.
+const sections: { key: string; label: Phrase }[] = [
+  { key: "profile", label: ui.acct_profile },
+  { key: "security", label: ui.acct_security },
+  { key: "devices", label: ui.acct_devices },
+];
+const menuItem =
+  "block rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-slate-800";
+const link = "text-blue-600 hover:underline dark:text-blue-400";
+
+// Added 2026-10-11 (T070, step 3b of plan phase 3): the superuser has a fourth section, the hand-over of the role and
+// the recovery codes; nobody else is shown it (the routes behind it answer 404 to everyone else as well).
+const isSuperuser = account?.superuser ?? false;
+const menuSections = isSuperuser
+  ? [...sections, { key: "superuser", label: ui.acct_superuser }]
+  : sections;
+const primaryButton =
+  "rounded bg-blue-600 px-4 py-2 text-white transition-opacity hover:opacity-90 disabled:opacity-50";
+const secondaryButton =
+  "rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 transition-opacity hover:opacity-80 disabled:opacity-50 dark:border-slate-600 dark:text-gray-200";
+const selectClass =
+  "w-full rounded border border-gray-300 bg-[#ffffff] p-2.5 text-sm text-gray-800 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200 dark:focus:border-blue-500 dark:focus:ring-blue-500";
+const messageClass = "hidden rounded bg-gray-100 p-3 text-sm dark:bg-slate-800";
+const coolingHours = site.admin.handoverCoolingHours;
+// Added 2026-10-13 (T145): the member's address, the hand-over's banner and state, and the list of administrators print a
+// person's name and address as text, so they carry `ym-hide-content` and Yandex Metrika's Session Replay records them
+// as random characters (METRIKA.md 3.1); server/test/metrika-marks.test.ts keeps the list.
+
+// Removed 2026-10-11 (T052): the `prerender = true` line that stood here is gone. A prerendered file is the same for
+// every visitor, so the header could not know who was looking; the page is rendered per request now, and the header is
+// right from the first byte (T142).
+---
+
+<Base title={ui.auth_account}>
+  <section class="mx-auto max-w-4xl">
+    <h1 class="mb-6 text-2xl font-bold"><T s={ui.auth_account} /></h1>
+    {
+      account === null ? (
+        <p class="text-sm">
+          <T s={ui.acct_not_signed_in} />{" "}
+          <a href={site.auth.signIn} class={link}>
+            <T s={ui.signin_submit} />
+          </a>
+        </p>
+      ) : mustChange ? (
+        <div>
+          <p class="mb-6 rounded bg-gray-100 p-4 text-sm dark:bg-slate-800">
+            <T s={ui.acct_temp_notice} />
+          </p>
+          <h2 class="mb-4 text-base font-semibold">
+            <T s={ui.acct_password_title} />
+          </h2>
+          <form id="password-form" class="max-w-md space-y-4" novalidate>
+            <AuthField
+              id="password-current"
+              name="current"
+              label={ui.acct_temp_password}
+              type="password"
+              autocomplete="current-password"
+              required
+              toggle
+            />
+            <AuthField
+              id="password-new"
+              name="next"
+              label={ui.recover_new_password}
+              type="password"
+              autocomplete="new-password"
+              minlength={8}
+              required
+              toggle
+              hint={ui.acct_password_hint}
+            />
+            <AuthField
+              id="password-repeat"
+              name="repeat"
+              label={ui.recover_repeat_new}
+              type="password"
+              autocomplete="new-password"
+              required
+              toggle
+            />
+            <p
+              id="password-message"
+              class="hidden rounded bg-gray-100 p-3 text-sm dark:bg-slate-800"
+              role="alert"
+            />
+            <button
+              id="password-submit"
+              type="submit"
+              class="rounded bg-blue-600 px-4 py-2 text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              <T s={ui.acct_password_submit} />
+            </button>
+          </form>
+          <button
+            id="signout-btn"
+            type="button"
+            class="mt-10 rounded bg-blue-600 px-4 py-2 text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            <T s={ui.acct_sign_out} />
+          </button>
+        </div>
+      ) : (
+        <div>
+          {/* Added 2026-10-11 (T070, step 3b): the open hand-over of the role of the superuser, shown to both sides
+            wherever they open the account page. It is empty and hidden until the script has asked the server; a
+            visitor who is no side of a hand-over never sees it. */}
+          <div
+            id="handover-banner"
+            hidden
+            class="mb-6 rounded border border-gray-200 p-4 text-sm dark:border-slate-700"
+          >
+            <p id="handover-banner-text" class="ym-hide-content mb-3" />
+            <form
+              id="handover-accept-form"
+              class="max-w-md space-y-3"
+              hidden
+              novalidate
+            >
+              <AuthField
+                id="handover-accept-password"
+                name="password"
+                label={ui.acct_your_password}
+                type="password"
+                autocomplete="current-password"
+                required
+                toggle
+              />
+              <p
+                id="handover-accept-message"
+                class={messageClass}
+                role="alert"
+              />
+              <div class="flex flex-wrap gap-3">
+                <button
+                  id="handover-accept-submit"
+                  type="submit"
+                  class={primaryButton}
+                >
+                  <T s={ui.acct_accept} />
+                </button>
+                <button
+                  id="handover-decline"
+                  type="button"
+                  class={secondaryButton}
+                >
+                  <T s={ui.acct_decline} />
+                </button>
+              </div>
+            </form>
+            <p id="handover-cancel-message" class={messageClass} role="alert" />
+            <button
+              id="handover-cancel"
+              type="button"
+              hidden
+              class={secondaryButton}
+            >
+              <T s={ui.acct_cancel_handover} />
+            </button>
+          </div>
+          <div class="md:grid md:grid-cols-[13rem_minmax(0,1fr)] md:gap-8">
+            <nav
+              {...langAttrs({ "aria-label": ui.acct_menu_label })}
+              class="mb-6 md:mb-0"
+              id="account-menu"
+            >
+              <ul class="flex flex-wrap gap-1 md:flex-col">
+                {menuSections.map((section) => (
+                  <li>
+                    <a
+                      href={`#${section.key}`}
+                      data-menu={section.key}
+                      class={menuItem}
+                    >
+                      <T s={section.label} />
+                    </a>
+                  </li>
+                ))}
+                {isEditor && (
+                  <>
+                    <li class="hidden px-3 pt-4 text-xs uppercase tracking-wide text-gray-500 md:block dark:text-slate-400">
+                      <T s={ui.acct_manage} />
+                    </li>
+                    <li>
+                      <a href={site.admin.postsPage} class={menuItem}>
+                        <T s={ui.admin_posts_title} />
+                      </a>
+                    </li>
+                    {/* Added 2026-10-12 (T175): the videos page of the panel, between the posts and the users. */}
+                    <li>
+                      <a href={site.admin.videosPage} class={menuItem}>
+                        <T s={ui.admin_videos_title} />
+                      </a>
+                    </li>
+                    <li>
+                      <a href={site.admin.usersPage} class={menuItem}>
+                        <T s={ui.admin_users_title} />
+                      </a>
+                    </li>
+                    {/* Added 2026-10-13 (T107): the messages of the feedback form, after the users. */}
+                    <li>
+                      <a href={site.admin.feedbackPage} class={menuItem}>
+                        <T s={ui.admin_feedback_title} />
+                      </a>
+                    </li>
+                    {/* Added 2026-10-13 (T110, T147): the superuser's settings, for the superuser only. */}
+                    {isSuperuser && (
+                      <li>
+                        <a href={site.admin.settingsPage} class={menuItem}>
+                          <T s={ui.admin_settings_title} />
+                        </a>
+                      </li>
+                    )}
+                  </>
+                )}
+                <li class="md:mt-4">
+                  <button
+                    id="signout-btn"
+                    type="button"
+                    class="w-full rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-slate-800"
+                  >
+                    <T s={ui.acct_sign_out} />
+                  </button>
+                </li>
+              </ul>
+            </nav>
+
+            <div class="min-w-0">
+              <section id="section-profile" data-section="profile">
+                <h2 class="mb-4 text-base font-semibold">
+                  <T s={ui.acct_profile} />
+                </h2>
+                <form id="profile-form" class="max-w-md space-y-4" novalidate>
+                  <AuthField
+                    id="profile-name"
+                    name="displayName"
+                    label={ui.signup_name}
+                    autocomplete="name"
+                    maxlength={80}
+                    required
+                    value={account.displayName}
+                  />
+                  <AuthField
+                    id="profile-login"
+                    name="login"
+                    label={ui.signup_login}
+                    autocomplete="username"
+                    maxlength={32}
+                    value={account.login ?? ""}
+                    hint={ui.signup_login_hint}
+                  />
+                  <div>
+                    <p class="mb-1 text-sm text-gray-500 dark:text-slate-400">
+                      <T s={ui.acct_email} />
+                    </p>
+                    <p class="ym-hide-content break-all text-sm">
+                      {account.email}
+                    </p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                      <T s={ui.acct_email_note} />
+                    </p>
+                  </div>
+                  <div>
+                    <p class="mb-1 text-sm text-gray-500 dark:text-slate-400">
+                      <T s={ui.acct_status} />
+                    </p>
+                    <p class="text-sm font-semibold">
+                      <T s={statusName} />
+                    </p>
+                    {/* Added 2026-10-11 (T152): the end of the access to the paid lectures. */}
+                    {lectureLine !== null && (
+                      <p id="lecture-access" class="mt-1 text-sm">
+                        <T s={lectureLine} />
+                      </p>
+                    )}
+                  </div>
+                  {status === "blocked" && (
+                    <p class="rounded bg-gray-100 p-3 text-sm text-red-600 dark:bg-slate-800 dark:text-red-400">
+                      <T s={blockedText} />
+                    </p>
+                  )}
+                  <p
+                    id="profile-message"
+                    class="hidden rounded bg-gray-100 p-3 text-sm dark:bg-slate-800"
+                    role="alert"
+                  />
+                  <button
+                    id="profile-submit"
+                    type="submit"
+                    class="rounded bg-blue-600 px-4 py-2 text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    <T s={ui.acct_save} />
+                  </button>
+                </form>
+              </section>
+
+              <section
+                id="section-security"
+                data-section="security"
+                class="hidden"
+              >
+                <h2 class="mb-4 text-base font-semibold">
+                  <T s={ui.acct_password_title} />
+                </h2>
+                <form id="password-form" class="max-w-md space-y-4" novalidate>
+                  <AuthField
+                    id="password-current"
+                    name="current"
+                    label={ui.acct_current_password}
+                    type="password"
+                    autocomplete="current-password"
+                    required
+                    toggle
+                  />
+                  <AuthField
+                    id="password-new"
+                    name="next"
+                    label={ui.recover_new_password}
+                    type="password"
+                    autocomplete="new-password"
+                    minlength={8}
+                    required
+                    toggle
+                    hint={ui.acct_password_hint}
+                  />
+                  <AuthField
+                    id="password-repeat"
+                    name="repeat"
+                    label={ui.recover_repeat_new}
+                    type="password"
+                    autocomplete="new-password"
+                    required
+                    toggle
+                  />
+                  <p
+                    id="password-message"
+                    class="hidden rounded bg-gray-100 p-3 text-sm dark:bg-slate-800"
+                    role="alert"
+                  />
+                  <button
+                    id="password-submit"
+                    type="submit"
+                    class="rounded bg-blue-600 px-4 py-2 text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    <T s={ui.acct_password_submit} />
+                  </button>
+                </form>
+              </section>
+
+              <section
+                id="section-devices"
+                data-section="devices"
+                class="hidden"
+              >
+                <h2 class="mb-4 text-base font-semibold">
+                  <T s={ui.acct_devices_title} />
+                </h2>
+                <p id="devices-status" class="text-sm">
+                  <T s={ui.auth_loading} />
+                </p>
+                <ul
+                  id="devices-list"
+                  class="divide-y divide-gray-200 dark:divide-slate-700"
+                />
+                <AdminPager id="devices-pager" label={ui.devices_pages} />
+                <button
+                  id="devices-end-others"
+                  type="button"
+                  hidden
+                  class="mt-4 rounded bg-white px-3 py-1 text-sm text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-40 dark:bg-slate-900 dark:text-gray-300 dark:hover:bg-slate-800"
+                >
+                  <T s={ui.acct_end_others} />
+                </button>
+              </section>
+
+              {/* Added 2026-10-11 (T070, step 3b): the section of the superuser. It is in the markup for the superuser
+              only; the script fills the list of administrators and the state of the hand-over. */}
+              {isSuperuser && (
+                <section
+                  id="section-superuser"
+                  data-section="superuser"
+                  class="hidden"
+                >
+                  <h2 class="mb-4 text-base font-semibold">
+                    <T s={ui.acct_handover_title} />
+                  </h2>
+                  <p class="mb-4 max-w-xl text-sm">
+                    <T
+                      s={format(ui.acct_handover_intro, {
+                        hours: coolingHours,
+                      })}
+                    />
+                  </p>
+                  <p
+                    id="superuser-handover-state"
+                    class="ym-hide-content mb-4 text-sm"
+                  />
+                  <form
+                    id="handover-start-form"
+                    class="max-w-md space-y-4"
+                    novalidate
+                  >
+                    <div>
+                      <label
+                        for="handover-target"
+                        class="mb-1 block text-sm text-gray-500 dark:text-slate-400"
+                      >
+                        <T s={ui.acct_handover_to} />
+                      </label>
+                      {/* A select with no content is written self-closing by Prettier, and the Astro compiler then leaves the element open
+                        and swallows the rest of the template (found 2026-10-11: the page's script ended up inside it). The
+                        placeholder option is replaced by the script. */}
+                      <select
+                        id="handover-target"
+                        class:list={[selectClass, "ym-hide-content"]}
+                      >
+                        <option value="" disabled selected>
+                          {ui.auth_loading[site.i18n.defaultLanguage]}
+                        </option>
+                      </select>
+                    </div>
+                    <AuthField
+                      id="handover-start-password"
+                      name="password"
+                      label={ui.acct_your_password}
+                      type="password"
+                      autocomplete="current-password"
+                      required
+                      toggle
+                    />
+                    <p
+                      id="handover-start-message"
+                      class={messageClass}
+                      role="alert"
+                    />
+                    <button
+                      id="handover-start-submit"
+                      type="submit"
+                      class={primaryButton}
+                    >
+                      <T s={ui.acct_handover_submit} />
+                    </button>
+                  </form>
+
+                  <h2 class="mb-4 mt-10 text-base font-semibold">
+                    <T s={ui.acct_codes_title} />
+                  </h2>
+                  <p class="mb-2 max-w-xl text-sm">
+                    <T s={ui.acct_codes_intro} />
+                  </p>
+                  <p id="codes-left" class="mb-4 text-sm" />
+                  <form id="codes-form" class="max-w-md space-y-4" novalidate>
+                    <AuthField
+                      id="codes-password"
+                      name="password"
+                      label={ui.acct_your_password}
+                      type="password"
+                      autocomplete="current-password"
+                      required
+                      toggle
+                    />
+                    <p id="codes-message" class={messageClass} role="alert" />
+                    <button
+                      id="codes-submit"
+                      type="submit"
+                      class={primaryButton}
+                    >
+                      <T s={ui.acct_codes_make} />
+                    </button>
+                  </form>
+                  <div
+                    id="codes-result"
+                    hidden
+                    class="mt-6 max-w-md rounded border border-gray-200 p-4 text-sm dark:border-slate-700"
+                  >
+                    <p class="mb-2 font-semibold">
+                      <T s={ui.acct_codes_new} />
+                    </p>
+                    <ol
+                      id="codes-list"
+                      class="ym-hide-content mb-3 list-decimal space-y-1 pl-6 font-mono"
+                    />
+                    <button
+                      id="codes-copy"
+                      type="button"
+                      class={secondaryButton}
+                    >
+                      <T s={ui.form_copy} />
+                    </button>
+                  </div>
+                </section>
+              )}
+            </div>
+          </div>
+        </div>
+      )
+    }
+    <noscript>
+      <style is:inline>
+        [data-section] {
+          display: block !important;
+        }
+      </style>
+      <p class="mt-4 text-sm">
+        <T s={ui.acct_noscript} />
+      </p>
+    </noscript>
+  </section>
+</Base>
+
+<script>
+  // Top level of the template, never inside an expression (CLAUDE.md, measured 2026-09-22).
+  import {
+    attemptsLeftNote,
+    bindPasswordToggles,
+    commonRefusal,
+    joinPhrases,
+    messageArea,
+    sendJson,
+    waitLead,
+  } from "../../scripts/auth-forms";
+  import { bindPager, pageCount } from "../../scripts/admin-pager";
+  import { site } from "../../config";
+  // Added 2026-10-12 (T178): every sentence is a Phrase of the dictionary, written through setPhrase() so that a switch
+  // of language changes it on the screen; confirm() and an option's text take the language shown (phrase()).
+  import { ui } from "../../i18n/strings";
+  import { format, type Phrase } from "../../i18n/lang";
+  import { phrase, setPhrase } from "../../scripts/lang";
+
+  bindPasswordToggles();
+
+  type Device = {
+    id: string;
+    device: string;
+    created: string;
+    lastSeen: string;
+    current: boolean;
+  };
+
+  // Changed 2026-10-12 (T178): a Phrase, the date written by each language's own locale.
+  const whenIn = (iso: string, locale: string): string =>
+    new Date(iso).toLocaleString(locale, {
+      day: "numeric",
+      month: "long",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  const when = (iso: string): Phrase => ({
+    ru: whenIn(iso, "ru-RU"),
+    en: whenIn(iso, "en-GB"),
+  });
+
+  function slot(id: string): HTMLElement | null {
+    const element = document.querySelector(`[data-field-error="${id}"]`);
+    return element instanceof HTMLElement ? element : null;
+  }
+  function fieldError(id: string, text: Phrase | null): void {
+    const element = slot(id);
+    if (element === null) return;
+    if (text === null) element.textContent = "";
+    else setPhrase(element, text);
+    element.classList.toggle("hidden", text === null);
+  }
+  const value = (id: string): string => {
+    const element = document.getElementById(id);
+    return element instanceof HTMLInputElement ? element.value : "";
+  };
+
+  // ---- sign out ----
+  const signout = document.getElementById("signout-btn");
+  signout?.addEventListener("click", async () => {
+    if (signout instanceof HTMLButtonElement) signout.disabled = true;
+    await sendJson("POST", "/api/auth/signout", {});
+    location.replace("/");
+  });
+
+  // ---- the menu: the chosen section is the address hash ----
+  const sectionKeys = ["profile", "security", "devices", "superuser"];
+  const selectedClasses = [
+    "bg-blue-50",
+    "text-blue-700",
+    "dark:bg-slate-700",
+    "dark:text-blue-300",
+  ];
+  const plainClasses = ["text-gray-700", "dark:text-gray-300"];
+  function showSection(): void {
+    const wanted = location.hash.replace("#", "");
+    const key = sectionKeys.includes(wanted) ? wanted : "profile";
+    for (const section of document.querySelectorAll<HTMLElement>(
+      "[data-section]",
+    )) {
+      section.classList.toggle("hidden", section.dataset["section"] !== key);
+    }
+    for (const item of document.querySelectorAll<HTMLElement>("[data-menu]")) {
+      const on = item.dataset["menu"] === key;
+      item.classList.add(...(on ? selectedClasses : plainClasses));
+      item.classList.remove(...(on ? plainClasses : selectedClasses));
+      if (on) item.setAttribute("aria-current", "page");
+      else item.removeAttribute("aria-current");
+    }
+  }
+  if (document.querySelector("[data-section]") !== null) {
+    showSection();
+    window.addEventListener("hashchange", showSection);
+  }
+
+  // ---- the profile ----
+  const profileForm = document.getElementById("profile-form");
+  const profileSubmit = document.getElementById("profile-submit");
+  const profileArea = document.getElementById("profile-message");
+  // The sentences are the sign-up page's, for the same `problem` codes.
+  const profileSentences: Record<string, Record<string, Phrase>> = {
+    displayName: {
+      required: ui.signup_name_required,
+      too_long: ui.signup_name_long,
+    },
+    login: {
+      invalid: ui.signup_login_invalid,
+      taken: ui.signup_login_taken,
+    },
+  };
+  if (
+    profileForm instanceof HTMLFormElement &&
+    profileSubmit instanceof HTMLButtonElement &&
+    profileArea instanceof HTMLElement
+  ) {
+    const message = messageArea(profileArea);
+    profileForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      message.clear();
+      fieldError("profile-name", null);
+      fieldError("profile-login", null);
+      profileSubmit.disabled = true;
+      const answer = await sendJson("PATCH", "/api/auth/profile", {
+        displayName: value("profile-name"),
+        login: value("profile-login"),
+      });
+      profileSubmit.disabled = false;
+      if (answer.status === 200) {
+        // The server wrote the names back normalised (blanks collapsed, login in lower case): show what is stored.
+        const viewer = answer.body["viewer"] as
+          { displayName?: string; login?: string | null } | undefined;
+        const name = document.getElementById("profile-name");
+        const login = document.getElementById("profile-login");
+        if (name instanceof HTMLInputElement && viewer?.displayName) {
+          name.value = viewer.displayName;
+        }
+        if (login instanceof HTMLInputElement)
+          login.value = viewer?.login ?? "";
+        message.show(ui.acct_saved, "info");
+        return;
+      }
+      const common = commonRefusal(answer);
+      if (common !== null) {
+        message.show(common);
+        return;
+      }
+      const field = String(answer.body["field"] ?? "");
+      const problem =
+        answer.status === 409 ? "taken" : String(answer.body["problem"] ?? "");
+      const text = profileSentences[field]?.[problem];
+      if (text !== undefined) {
+        fieldError(
+          field === "displayName" ? "profile-name" : "profile-login",
+          text,
+        );
+        return;
+      }
+      message.show(ui.acct_save_failed);
+    });
+  }
+
+  // ---- the devices, five to a page ----
+  const status = document.getElementById("devices-status");
+  const list = document.getElementById("devices-list");
+  const endOthers = document.getElementById("devices-end-others");
+  const pageSize = site.pagination.pageSize;
+  let devices: Device[] = [];
+  let page = 1;
+  const draw = bindPager("devices-pager", (target) => {
+    page = target;
+    render();
+  });
+
+  function render(): void {
+    if (!(list instanceof HTMLElement)) return;
+    const last = pageCount(devices.length, pageSize);
+    page = Math.min(Math.max(1, page), last);
+    list.replaceChildren(
+      ...devices.slice((page - 1) * pageSize, page * pageSize).map((device) => {
+        const item = document.createElement("li");
+        item.className = "flex items-center justify-between gap-4 py-3 text-sm";
+        const text = document.createElement("div");
+        const title = document.createElement("p");
+        title.className = "font-medium";
+        setPhrase(
+          title,
+          device.current
+            ? format(ui.acct_this_device, { device: device.device })
+            : device.device,
+        );
+        const detail = document.createElement("p");
+        detail.className = "text-xs text-gray-500 dark:text-slate-400";
+        setPhrase(
+          detail,
+          format(ui.acct_device_detail, {
+            created: when(device.created),
+            seen: when(device.lastSeen),
+          }),
+        );
+        text.append(title, detail);
+        item.append(text);
+        if (!device.current) {
+          const end = document.createElement("button");
+          end.type = "button";
+          setPhrase(end, ui.acct_end);
+          end.className =
+            "rounded bg-white px-3 py-1 text-sm text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-40 dark:bg-slate-900 dark:text-gray-300 dark:hover:bg-slate-800";
+          end.addEventListener("click", async () => {
+            end.disabled = true;
+            await sendJson(
+              "DELETE",
+              `/api/auth/sessions/${encodeURIComponent(device.id)}`,
+            );
+            await loadDevices();
+          });
+          item.append(end);
+        }
+        return item;
+      }),
+    );
+    draw?.(page, last);
+    if (endOthers instanceof HTMLElement) {
+      endOthers.hidden = !devices.some((device) => !device.current);
+    }
+  }
+
+  async function loadDevices(): Promise<void> {
+    if (!(status instanceof HTMLElement) || !(list instanceof HTMLElement)) {
+      return;
+    }
+    const answer = await fetch("/api/auth/sessions", {
+      headers: { Accept: "application/json" },
+    }).catch(() => null);
+    if (answer === null || !answer.ok) {
+      status.hidden = false;
+      setPhrase(status, ui.acct_devices_failed);
+      return;
+    }
+    devices = (await answer.json()) as Device[];
+    status.hidden = true;
+    render();
+  }
+
+  if (endOthers instanceof HTMLButtonElement) {
+    endOthers.addEventListener("click", async () => {
+      endOthers.disabled = true;
+      await sendJson("DELETE", "/api/auth/sessions?all=others");
+      endOthers.disabled = false;
+      await loadDevices();
+    });
+  }
+  if (list !== null) void loadDevices();
+
+  // ---- change of password ----
+  const form = document.getElementById("password-form");
+  const submit = document.getElementById("password-submit");
+  const area = document.getElementById("password-message");
+
+  if (
+    form instanceof HTMLFormElement &&
+    submit instanceof HTMLButtonElement &&
+    area instanceof HTMLElement
+  ) {
+    const message = messageArea(area);
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      message.clear();
+      for (const id of [
+        "password-current",
+        "password-new",
+        "password-repeat",
+      ]) {
+        fieldError(id, null);
+      }
+      if (value("password-new") !== value("password-repeat")) {
+        fieldError("password-repeat", ui.form_passwords_differ);
+        return;
+      }
+      submit.disabled = true;
+      const answer = await sendJson("POST", "/api/auth/change-password", {
+        current: value("password-current"),
+        next: value("password-new"),
+      });
+
+      if (answer.status === 200) {
+        // The session id was renewed by the server and the cookie replaced, so a reload shows the full page.
+        message.show(ui.acct_password_changed, "info");
+        window.setTimeout(() => location.reload(), 900);
+        return;
+      }
+      if (answer.status === 429) {
+        message.countdown(answer.retryAfter || 60, waitLead, () => {
+          submit.disabled = false;
+        });
+        return;
+      }
+      submit.disabled = false;
+      const common = commonRefusal(answer);
+      if (common !== null) {
+        message.show(common);
+        return;
+      }
+      if (answer.body["field"] === "current") {
+        const wait = answer.body["retryAfterSeconds"];
+        if (typeof wait === "number" && wait > 0) {
+          submit.disabled = true;
+          message.countdown(wait, waitLead, () => {
+            submit.disabled = false;
+          });
+          return;
+        }
+        message.show(
+          joinPhrases(
+            ui.acct_current_wrong,
+            attemptsLeftNote(answer.body["attemptsLeft"]),
+          ),
+        );
+        return;
+      }
+      const problem = String(answer.body["problem"] ?? "");
+      const sentences: Record<string, Phrase> = {
+        too_short: ui.form_new_password_short,
+        too_long: ui.form_new_password_long,
+        same: ui.acct_password_same,
+      };
+      fieldError(
+        "password-new",
+        sentences[problem] ?? ui.recover_new_password_bad,
+      );
+    });
+  }
+
+  // ---- the hand-over of the superuser's role and the recovery codes (T070, step 3b) ----
+  // Added 2026-10-11. One request to `/api/account/handover` says whether an open hand-over has this account on one of
+  // its sides and, for the superuser only, how many recovery codes are unspent. Every sentence is written here from
+  // the server's fields; the server's own messages are English and never shown.
+  type HandoverState = {
+    role: "from" | "to";
+    other: { displayName: string; email: string };
+    expiresAt: string;
+    acceptedAt: string | null;
+    effectiveAt: string | null;
+  };
+  const bannerBox = document.getElementById("handover-banner");
+  const bannerText = document.getElementById("handover-banner-text");
+  const acceptForm = document.getElementById("handover-accept-form");
+  const acceptMessageArea = document.getElementById("handover-accept-message");
+  const cancelButton = document.getElementById("handover-cancel");
+  const cancelMessageArea = document.getElementById("handover-cancel-message");
+  const declineButton = document.getElementById("handover-decline");
+  const sectionState = document.getElementById("superuser-handover-state");
+  const startForm = document.getElementById("handover-start-form");
+  const startMessageArea = document.getElementById("handover-start-message");
+  const targetSelect = document.getElementById("handover-target");
+  const codesLeft = document.getElementById("codes-left");
+
+  // Changed 2026-10-12 (T178): a Phrase built from the dictionary's sentences; the dates are Phrases of their own.
+  function describeHandover(state: HandoverState): Phrase {
+    const who = `${state.other.displayName} (${state.other.email})`;
+    if (state.acceptedAt !== null && state.effectiveAt !== null) {
+      return format(
+        state.role === "to"
+          ? ui.acct_handover_accepted_to
+          : ui.acct_handover_accepted_from,
+        { who, when: when(state.effectiveAt) },
+      );
+    }
+    return state.role === "to"
+      ? format(ui.acct_handover_offered_to, {
+          who,
+          hours: site.admin.handoverCoolingHours,
+          when: when(state.expiresAt),
+        })
+      : format(ui.acct_handover_offered_from, {
+          who,
+          when: when(state.expiresAt),
+        });
+  }
+
+  // What a refused password typed again looks like on any of the three forms: the pause with its countdown, the tries
+  // left, the common refusals. Returns true when it said something.
+  function passwordRefusal(
+    answer: Awaited<ReturnType<typeof sendJson>>,
+    message: ReturnType<typeof messageArea>,
+    button: HTMLButtonElement,
+  ): boolean {
+    if (answer.status === 429) {
+      button.disabled = true;
+      message.countdown(answer.retryAfter || 60, waitLead, () => {
+        button.disabled = false;
+      });
+      return true;
+    }
+    // A refusal that is not a pause leaves the form usable again.
+    button.disabled = false;
+    const common = commonRefusal(answer);
+    if (common !== null) {
+      message.show(common);
+      return true;
+    }
+    if (answer.body["field"] === "password") {
+      const wait = answer.body["retryAfterSeconds"];
+      if (typeof wait === "number" && wait > 0) {
+        button.disabled = true;
+        message.countdown(wait, waitLead, () => {
+          button.disabled = false;
+        });
+        return true;
+      }
+      message.show(
+        joinPhrases(
+          ui.acct_password_wrong,
+          attemptsLeftNote(answer.body["attemptsLeft"]),
+        ),
+      );
+      return true;
+    }
+    return false;
+  }
+
+  async function loadHandover(): Promise<void> {
+    if (!(bannerBox instanceof HTMLElement)) return;
+    const answer = await sendJson("GET", "/api/account/handover");
+    if (answer.status !== 200) return;
+    const state = (answer.body["handover"] ?? null) as HandoverState | null;
+    const left = answer.body["recoveryCodesLeft"];
+    if (codesLeft instanceof HTMLElement && typeof left === "number") {
+      setPhrase(
+        codesLeft,
+        left === 0
+          ? ui.acct_codes_none
+          : format(ui.acct_codes_left, { n: left }),
+      );
+      // Added 2026-10-11 (T173): a holder with no codes (it took the role by a hand-over, or spent the last one) is
+      // asked for a set in a box that stands out, not in a plain line.
+      codesLeft.className =
+        left === 0
+          ? "mb-4 max-w-xl rounded border border-amber-400 bg-amber-50 p-3 text-sm font-semibold text-amber-900 dark:border-amber-500 dark:bg-amber-900/30 dark:text-amber-100"
+          : "mb-4 text-sm";
+    }
+    const waiting = state !== null && state.acceptedAt === null;
+    const toMe = state !== null && state.role === "to";
+    bannerBox.hidden = state === null;
+    if (bannerText instanceof HTMLElement) {
+      if (state === null) bannerText.textContent = "";
+      else setPhrase(bannerText, describeHandover(state));
+    }
+    // Accept (and decline) only for the side that has been asked and has not answered yet.
+    if (acceptForm instanceof HTMLElement)
+      acceptForm.hidden = !(toMe && waiting);
+    // Cancel for either side; for the asked side before an answer the "Отказаться" button does the same thing.
+    if (cancelButton instanceof HTMLElement) {
+      cancelButton.hidden = state === null || (toMe && waiting);
+    }
+    if (sectionState instanceof HTMLElement) {
+      if (state === null) sectionState.textContent = "";
+      else setPhrase(sectionState, describeHandover(state));
+    }
+    if (startForm instanceof HTMLElement) startForm.hidden = state !== null;
+  }
+
+  async function loadAdministrators(): Promise<void> {
+    if (!(targetSelect instanceof HTMLSelectElement)) return;
+    const answer = await sendJson(
+      "GET",
+      "/api/admin/users?status=admin&limit=50&page=1",
+    );
+    const users = Array.isArray(answer.body["users"])
+      ? answer.body["users"]
+      : [];
+    const options: HTMLOptionElement[] = [];
+    for (const entry of users) {
+      const user = entry as {
+        id: number;
+        displayName: string;
+        email: string;
+        self: boolean;
+      };
+      if (user.self) continue;
+      const option = document.createElement("option");
+      option.value = String(user.id);
+      option.textContent = `${user.displayName} (${user.email})`;
+      options.push(option);
+    }
+    if (options.length === 0) {
+      const none = document.createElement("option");
+      none.value = "";
+      none.disabled = true;
+      none.selected = true;
+      // An option holds text only, so the language shown is written now and again on a switch (below).
+      none.dataset["none"] = "";
+      none.textContent = phrase(ui.acct_no_other_admins);
+      options.push(none);
+    }
+    targetSelect.replaceChildren(...options);
+  }
+  // Added 2026-10-12 (T178): the placeholder option is rewritten in the language the page now shows.
+  document.addEventListener(site.i18n.changeEvent, () => {
+    const none = targetSelect?.querySelector("option[data-none]");
+    if (none instanceof HTMLOptionElement) {
+      none.textContent = phrase(ui.acct_no_other_admins);
+    }
+  });
+
+  // Cancel (either side) and decline (the asked side): the same call.
+  async function cancelHandover(
+    button: HTMLButtonElement,
+    message: ReturnType<typeof messageArea>,
+  ): Promise<void> {
+    message.clear();
+    button.disabled = true;
+    const answer = await sendJson("POST", "/api/account/handover/cancel", {});
+    button.disabled = false;
+    if (answer.status === 200 || answer.status === 404) {
+      // 404: the other side closed it first; either way the page now shows what is true.
+      await loadHandover();
+      return;
+    }
+    message.show(commonRefusal(answer) ?? ui.acct_cancel_failed);
+  }
+  if (
+    cancelButton instanceof HTMLButtonElement &&
+    cancelMessageArea instanceof HTMLElement
+  ) {
+    const message = messageArea(cancelMessageArea);
+    cancelButton.addEventListener(
+      "click",
+      () => void cancelHandover(cancelButton, message),
+    );
+    if (
+      declineButton instanceof HTMLButtonElement &&
+      acceptMessageArea instanceof HTMLElement
+    ) {
+      const declineMessage = messageArea(acceptMessageArea);
+      declineButton.addEventListener(
+        "click",
+        () => void cancelHandover(declineButton, declineMessage),
+      );
+    }
+  }
+
+  if (
+    acceptForm instanceof HTMLFormElement &&
+    acceptMessageArea instanceof HTMLElement
+  ) {
+    const message = messageArea(acceptMessageArea);
+    const submitButton = document.getElementById("handover-accept-submit");
+    acceptForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!(submitButton instanceof HTMLButtonElement)) return;
+      message.clear();
+      submitButton.disabled = true;
+      const answer = await sendJson("POST", "/api/account/handover/accept", {
+        password: value("handover-accept-password"),
+      });
+      if (answer.status === 200) {
+        // With no cooling period the role has moved already: a reload shows the page of the new superuser.
+        if (answer.body["completed"] === true) {
+          location.reload();
+          return;
+        }
+        submitButton.disabled = false;
+        await loadHandover();
+        return;
+      }
+      if (answer.status === 404) {
+        submitButton.disabled = false;
+        await loadHandover();
+        return;
+      }
+      if (passwordRefusal(answer, message, submitButton)) return;
+      submitButton.disabled = false;
+      message.show(ui.acct_accept_failed);
+    });
+  }
+
+  if (
+    startForm instanceof HTMLFormElement &&
+    startMessageArea instanceof HTMLElement
+  ) {
+    const message = messageArea(startMessageArea);
+    const submitButton = document.getElementById("handover-start-submit");
+    startForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!(submitButton instanceof HTMLButtonElement)) return;
+      message.clear();
+      const target =
+        targetSelect instanceof HTMLSelectElement ? targetSelect.value : "";
+      if (target === "") {
+        message.show(ui.acct_pick_admin);
+        return;
+      }
+      if (!confirm(phrase(ui.acct_handover_confirm))) {
+        return;
+      }
+      submitButton.disabled = true;
+      const answer = await sendJson("POST", "/api/admin/superuser/handover", {
+        password: value("handover-start-password"),
+        toUserId: Number(target),
+      });
+      submitButton.disabled = false;
+      if (answer.status === 200) {
+        const field = document.getElementById("handover-start-password");
+        if (field instanceof HTMLInputElement) field.value = "";
+        await loadHandover();
+        return;
+      }
+      if (answer.status === 409) {
+        await loadHandover();
+        return;
+      }
+      if (passwordRefusal(answer, message, submitButton)) return;
+      message.show(
+        answer.body["field"] === "toUserId"
+          ? ui.acct_target_not_admin
+          : ui.acct_start_failed,
+      );
+    });
+  }
+
+  const codesForm = document.getElementById("codes-form");
+  const codesMessageArea = document.getElementById("codes-message");
+  const codesResult = document.getElementById("codes-result");
+  const codesList = document.getElementById("codes-list");
+  const codesCopy = document.getElementById("codes-copy");
+  if (
+    codesForm instanceof HTMLFormElement &&
+    codesMessageArea instanceof HTMLElement &&
+    codesResult instanceof HTMLElement &&
+    codesList instanceof HTMLElement
+  ) {
+    const message = messageArea(codesMessageArea);
+    const submitButton = document.getElementById("codes-submit");
+    let current: string[] = [];
+    codesForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!(submitButton instanceof HTMLButtonElement)) return;
+      message.clear();
+      if (!confirm(phrase(ui.acct_codes_confirm))) {
+        return;
+      }
+      submitButton.disabled = true;
+      const answer = await sendJson(
+        "POST",
+        "/api/admin/superuser/recovery-codes",
+        { password: value("codes-password") },
+      );
+      submitButton.disabled = false;
+      const codes = answer.body["codes"];
+      if (answer.status === 200 && Array.isArray(codes)) {
+        current = codes.map(String);
+        codesList.replaceChildren(
+          ...current.map((code) => {
+            const item = document.createElement("li");
+            item.textContent = code;
+            return item;
+          }),
+        );
+        codesResult.hidden = false;
+        const field = document.getElementById("codes-password");
+        if (field instanceof HTMLInputElement) field.value = "";
+        await loadHandover();
+        return;
+      }
+      if (passwordRefusal(answer, message, submitButton)) return;
+      message.show(ui.acct_codes_failed);
+    });
+    codesCopy?.addEventListener("click", () => {
+      void navigator.clipboard
+        .writeText(current.join("\n"))
+        .then(() => message.show(ui.form_codes_copied, "info"))
+        .catch(() => message.show(ui.form_codes_copy_failed));
+    });
+  }
+
+  if (bannerBox !== null) {
+    void loadHandover();
+    void loadAdministrators();
+  }
+
+  // Added 2026-10-11 (T056): the Back button after a sign-out can bring this page out of the browser's back-forward
+  // cache with the account still on it. It asks the server who the visitor is now and, when nobody, reloads: the
+  // server answers the reload with the redirect to the sign-in page.
+  window.addEventListener("pageshow", (event) => {
+    if (!event.persisted) return;
+    fetch("/api/auth/me", { headers: { Accept: "application/json" } })
+      .then((response) => response.json())
+      .then((body: { viewer: unknown }) => {
+        if (body.viewer === null) location.reload();
+      })
+      .catch(() => {});
+  });
+</script>

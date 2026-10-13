@@ -1,0 +1,157 @@
+---
+// Previous, the page numbers and Next under a paginated list. Added 2026-09-19, asked for by
+// the owner: one component for every list - the Posts list and the category pages
+// (CardList.astro), the tag pages (pages/tags/[slug]/[...page].astro) and any list added later -
+// in place of the two copies of the block those templates carried, one per theme template.
+// See PAGINATION.md, section 6.
+//
+// WHERE THE MARKUP COMES FROM
+//
+// The container, the Previous and Next buttons and their classes are the pagination block of
+// ../klub_biolocation/themes/void/layouts/_default/list.html:
+//
+//   .Paginator.HasPrev / .HasNext / .Prev.URL / .Next.URL
+//                                -> prevUrl / nextUrl, from paginateList() in lib/posts.ts.
+//   i18n "pagination_previous" / "pagination_next"
+//                                -> t.pagination_previous / t.pagination_next, so the button
+//                                   text translates with the rest of src/i18n/strings.ts.
+//
+// The arrows inside the buttons are the inline SVG chevrons of taxonomy/tag.html, the owner's
+// choice on 2026-09-19 over list.html's text arrows ("&larr; Previous", "Next &rarr;"): they
+// are the arrows of the Previous and Next cards under an article as well, and a text arrow
+// depends on the font. The buttons therefore carry `flex items-center`, as tag.html's do.
+//
+// tag.html gave its own buttons `rounded-full` and no dark: classes, which left them white in
+// dark mode; the reviewer noticed the two shapes and the owner chose list.html's for every
+// list (REVIEW-FIXES.md, section 1). For the record, tag.html's Previous and Next were
+// "flex items-center rounded-full bg-white px-4 py-2 text-gray-700 shadow-sm transition-colors
+// hover:bg-gray-50".
+//
+// The numbered links in the middle are new; the theme has none. Which pages they show is
+// decided by pageNumbers() in lib/posts.ts - every page of a short list, only the first, the
+// current and the last page of a long one, with an ellipsis for the pages skipped. The number
+// buttons use the classes of Previous and Next, the current page the year switcher's
+// highlighted colours; it is a span with aria-current, not a link. Every link is labelled
+// "Page n" for screen readers, with the theme's own string, and the ellipsis is aria-hidden.
+//
+// LAYOUT
+//
+// Like Hugo, the block renders only when there is a neighbouring page, and an empty div keeps
+// Next on the right when there is no Previous. The classes added to list.html's container -
+// flex-wrap, items-center, gap-y-4 and the sm: grid, plus justify-self on the two buttons -
+// only place the numbers: below 640px they take a row of their own under Previous and Next
+// (order-last, w-full), from 640px up the three sit in one row with the numbers centred
+// whether or not both buttons are there. The caller sets the top margin through `class`,
+// because the two theme templates differ there (mt-12 in list.html, mt-10 in tag.html).
+// lib/lists.ts since 2026-09-22, when the list helpers left lib/posts.ts so that posts and
+// videos stay apart and share only what is common (VIDEO-PAGE.md, section 4).
+import type { PageNumber } from "../lib/lists";
+// Changed 2026-10-12 with the two interface languages (src/i18n/lang.ts): ui (was t); the button
+// texts through T and the page labels as language-dependent attributes. scripts/check-pagination.mjs
+// finds the numbered links by their English label (data-en-aria-label) since then.
+// import { t } from "../i18n/strings";
+import { ui } from "../i18n/strings";
+import { langAttrs } from "../i18n/lang";
+import T from "./T.astro";
+
+interface Props {
+  /** The addresses of the neighbouring pages; undefined on the first and on the last page. */
+  prevUrl: string | undefined;
+  nextUrl: string | undefined;
+  /** The numbered links, from pageNumbers() in lib/posts.ts. */
+  numbers: PageNumber[];
+  /** Classes for the container, typically the top margin. */
+  class?: string;
+}
+
+const { prevUrl, nextUrl, numbers, class: className } = Astro.props;
+---
+
+{
+  (prevUrl || nextUrl) && (
+    <div
+      class:list={[
+        "flex flex-wrap items-center justify-between gap-y-4 sm:grid sm:grid-cols-[1fr_auto_1fr]",
+        className,
+      ]}
+    >
+      {prevUrl ? (
+        <a
+          href={prevUrl}
+          class="flex items-center rounded-md bg-white px-4 py-2 text-gray-700 shadow-sm transition-colors hover:bg-gray-50 sm:justify-self-start dark:bg-slate-900 dark:text-gray-300 dark:hover:bg-slate-800"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="mr-1 h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M15 19l-7-7 7-7"
+            />
+          </svg>
+          {/* Changed 2026-10-12: both languages (was t.pagination_previous). */}
+          <T s={ui.pagination_previous} />
+        </a>
+      ) : (
+        <div />
+      )}
+      <div class="order-last flex w-full flex-wrap justify-center gap-1 sm:order-none sm:w-auto">
+        {numbers.map((entry) =>
+          entry.kind === "gap" ? (
+            <span
+              aria-hidden="true"
+              class="px-1 py-1 text-sm text-gray-500 dark:text-gray-400"
+            >
+              &hellip;
+            </span>
+          ) : entry.current ? (
+            <span
+              aria-current="page"
+              class="rounded-md bg-blue-50 px-3 py-1 text-sm text-blue-700 shadow-sm dark:bg-slate-700 dark:text-blue-300"
+            >
+              {entry.number}
+            </span>
+          ) : (
+            <a
+              href={entry.url}
+              {...langAttrs({ "aria-label": ui.pagination_page(entry.number) })}
+              class="rounded-md bg-white px-3 py-1 text-sm text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:bg-slate-900 dark:text-gray-300 dark:hover:bg-slate-800"
+            >
+              {entry.number}
+            </a>
+          ),
+        )}
+      </div>
+      {nextUrl ? (
+        <a
+          href={nextUrl}
+          class="flex items-center rounded-md bg-white px-4 py-2 text-gray-700 shadow-sm transition-colors hover:bg-gray-50 sm:justify-self-end dark:bg-slate-900 dark:text-gray-300 dark:hover:bg-slate-800"
+        >
+          {/* Changed 2026-10-12: both languages (was t.pagination_next). */}
+          <T s={ui.pagination_next} />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="ml-1 h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 5l7 7-7 7"
+            />
+          </svg>
+        </a>
+      ) : (
+        <div />
+      )}
+    </div>
+  )
+}

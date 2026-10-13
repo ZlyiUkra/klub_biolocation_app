@@ -1,0 +1,396 @@
+---
+// The tag cloud under the carousel on the home page. Added 2026-09-22 at the owner's request,
+// from a page he gave as the reference: telo.by/o_sayte/, which prints a heading over a cloud of
+// multi-coloured words. Three things about it were changed on purpose, and each is his decision:
+//
+//   no heading  - the reference writes "QUICK NAVIGATION" above its cloud; this one stands alone.
+//   one colour  - the reference paints every word a different colour. Here the size alone says
+//                 which tag carries the most entries, and the colour is the site's blue at one
+//                 shade, so the block reads as one thing rather than as confetti.
+//   tags only   - every word here is a taxonomy term with a page behind it.
+//
+// WHY THIS IS HTML AND NOT A CANVAS
+//
+// The reference draws its cloud into a canvas with a word-cloud library. That would cost a
+// dependency, and it would cost the three properties this block exists for: the words are links
+// to /tags/<slug>/, a search engine has to see them, and a screen reader has to read them. A
+// canvas has none of the three, and the reference shows the other price of it - its own words are
+// clipped at the edge of the bitmap, because the layout does not know how wide the canvas is.
+// Anchors in a wrapping flex row give the same silhouette, cost nothing and cannot be clipped.
+//
+// WHY THE SIZE IS LOGARITHMIC
+//
+// The counts on this site run from 33 entries down to 1, so a size proportional to the count
+// would print one word many times the height of another and the rest as dust. The logarithm maps
+// whatever range the content has onto the seven steps below.
+//
+// WHY IT IS HIDDEN ON A PHONE, AND WHY AT THAT WIDTH
+//
+// The owner asked for a cloud "on the desktop, from a certain width up", and for it to disappear
+// exactly where the hamburger appears. The header replaces its menu with a hamburger below 640px
+// (the toggle in Header.astro carries sm:hidden), so the cloud is hidden below 640px and shown
+// from there up. If that breakpoint in Header.astro moves - there is a note there proposing 768px
+// - this one moves with it, because the rule the owner gave is "no cloud while the menu is a
+// hamburger", not "no cloud below 640px".
+//
+// The row of round menu links on the home page is the other half of that rule and carries the
+// mirror image of these classes: the two swap at the same width and are never on screen together
+// (src/pages/index.astro). Below the breakpoint the header menu is a hamburger, so the page needs
+// navigation of its own and the round links are it; above it the header shows every menu item, so
+// the links would only repeat the header and the cloud takes the space instead.
+//
+// It is a CSS media query rather than an Astro directive. client:media hydrates a framework
+// component, and this project has no framework component at all; Astro's own template directives
+// reference adds that when an element is already shown and hidden by CSS, the directive is the
+// harder way round. So the markup is in the page on a phone too, unseen - which is what lets a
+// crawler read the links whatever the viewport is.
+//
+// REVERSED THE SAME EVENING, AND THIS IS THE RULE THAT HOLDS
+//
+// The two paragraphs above describe the arrangement until the owner looked at it and asked for the
+// opposite, in these words: the cloud appears below 640px and disappears above it, where the row
+// of round menu links comes back instead. They are kept because the reasoning in them is still the
+// reasoning for the pair swapping at all, and because the rule flipped once and a later session
+// should be able to see that it did rather than assume a mistake.
+//
+// So: below 640px this block is shown and the round links are not; from 640px up it is
+// display:none and the links are shown (src/pages/index.astro carries the mirror image). The
+// breakpoint is still the header's - 640px is where Header.astro swaps its menu for a hamburger -
+// and the last paragraph above is unaffected: it is still a media query, the markup is still in
+// the page at every width, and a crawler still reads the links whichever side of 640px it renders
+// at.
+//
+// One consequence belongs here rather than in the script. The sphere now runs where the screen is
+// narrowest, so its radius is capped by the widest word it holds: without that cap a long tag like
+// "Геопатогенные Зоны" reaches past the edge of a 390px phone, and `main` below 640px carries
+// overflow-x-auto, which turns that into a horizontal scrollbar on the whole page.
+//
+// HOW IT MOVES
+//
+// Asked for by the owner on 2026-09-22, in three parts, and each part is here for a different
+// reason. The words breathe - every one of them drifts a few pixels up and down on a slow loop of
+// its own length and its own phase, so the block never settles into a pulse. A word grows under
+// the pointer while every other word rolls back - smaller, dimmer - so that the cloud has one
+// word at a time in front. And the cloud turns like a globe, taking its speed and its direction
+// from where the pointer is over it: that is src/scripts/tag-cloud.ts, which is also where the
+// reference for all of this is written down. The owner pointed at telo.by, whose cloud is jQuery
+// TagCanvas, and asked for its behaviour without the colours and without the outline box it
+// draws around the word under the cursor. A fade-in on load was offered and he did not want it.
+//
+// What is rendered here is the wrapping row, and the globe is a class the script adds. So the
+// markup a crawler or a screen reader reads is a plain list of links in a fixed order, which is
+// exactly what the reference throws away by drawing into a canvas: on that page the links sit in
+// a list marked display:none beside the picture.
+//
+// Both the breathing and the globe stop for a visitor who has asked for less motion, in the media
+// query at the foot of the stylesheet here and in the matching test in the script. Nothing is
+// lost but the movement: the cloud is a wrapping row of the same links either way.
+//
+// The motion values are derived from the name of the tag, not from Math.random(). A random value
+// would be drawn again on every build, so two builds of unchanged content would differ and the
+// screenshot comparison this project relies on would report a change that nobody made.
+import { site } from "../config";
+// Changed 2026-10-10 (T162): these pages need a term's name, label and number of entries and nothing else, so they
+// take the backend's counts (getTermCounts) instead of the cards of every entry (getTerms).
+import { getTermCounts } from "../lib/terms";
+import { encodeSlug } from "../lib/urlize";
+// Added 2026-10-12 with the two interface languages (src/i18n/lang.ts): the cloud's label is the
+// Tags section's name in both languages (it read "Tags").
+import { langAttrs } from "../i18n/lang";
+
+// The same source as /tags/ and the tag pages, so a word here cannot point at a page that does
+// not exist: getTerms() has already dropped drafts and future dates. It runs at build time, in
+// component frontmatter, through top-level await (Astro 4, "Data Fetching"), so a visitor
+// receives finished HTML.
+//
+// The local binding widens the readonly tuple that `as const` gives site.tagCloud.hidden into a
+// readonly string[]. Without it, includes() would only accept the three literal names and reject
+// any other string, which is the opposite of what a filter needs.
+const hiddenTags: readonly string[] = site.tagCloud.hidden;
+// Changed 2026-10-10 (T034): the page is rendered on demand now, so this runs per request, and the viewer's cookie is
+// passed on to the backend for phase 2.
+const context = { cookie: Astro.request.headers.get("cookie") ?? undefined };
+const tags = (await getTermCounts("tags", context)).filter(
+  (tag) => !hiddenTags.includes(tag.name),
+);
+
+// Smallest first. Written out as literals because Tailwind scans the source for class names and
+// generates only the ones it can see; an assembled name would come out unstyled.
+//
+// The scale starts at text-base and not at text-sm since 2026-09-22, at the owner's request: a
+// tag with one entry was 14px, and on the globe the far side of the sphere shrinks a word further
+// still, which left the rarest tags as a target too small to put a pointer on. The floor of that
+// depth scale was raised in src/scripts/tag-cloud.ts at the same time, and the anchors carry a
+// little padding, so the area that answers a click is larger than the letters in it.
+const sizes = [
+  "text-base",
+  "text-lg",
+  "text-xl",
+  "text-2xl",
+  "text-3xl",
+  "text-4xl",
+];
+
+const counts = tags.map((tag) => tag.count);
+const least = Math.log(Math.min(...counts));
+const most = Math.log(Math.max(...counts));
+
+/** Which of the size steps a tag with this many entries gets, smallest 0. */
+const stepOf = (count: number): number =>
+  // One below the largest when every tag is used equally often, which is also a site with a
+  // single tag: there is no range to spread over, and the largest size for everything would shout.
+  most === least
+    ? sizes.length - 2
+    : Math.round(
+        ((Math.log(count) - least) / (most - least)) * (sizes.length - 1),
+      );
+
+// A small number that is always the same for the same word. Thirty-one and a prime modulus are
+// the usual pair for a string hash; nothing here needs it to be a good one, only to be stable and
+// to differ between neighbouring words.
+const hashOf = (text: string): number => {
+  let sum = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    sum = (sum * 31 + text.charCodeAt(index)) % 9973;
+  }
+  return sum;
+};
+
+/**
+ * How one word moves: how far it drifts, how long one breath takes, and where in that breath it
+ * starts. Written twice into the markup, and that is deliberate - the same three numbers drive
+ * the wrapping row in CSS and the sphere in the script, so the block looks the same either way.
+ *
+ * As custom properties they feed the keyframes at the foot of this file. As data attributes they
+ * are read once by src/scripts/tag-cloud.ts, which folds the breathing into the position it
+ * computes, because in sphere mode the script owns the transform and a CSS animation on the same
+ * property would win over it and freeze the word in place.
+ *
+ * The phase is a negative delay, which starts an animation part-way through instead of waiting -
+ * without it every word would begin its first breath together and the cloud would pulse once
+ * before falling out of step. The depth is the odd one out: it belongs to the row alone, where it
+ * stands the larger words in front, while the sphere gets its depth from where a word is on it.
+ */
+type Motion = { drift: number; breath: number; phase: number; style: string };
+
+const motionOf = (name: string, step: number): Motion => {
+  const seed = hashOf(name);
+  const drift = 3 + (seed % 4);
+  const breath = 6 + (seed % 5);
+  const phase = (seed % 60) / 10;
+  const depth = (step - (sizes.length - 1) / 2) * 12;
+  return {
+    drift,
+    breath,
+    phase,
+    style: `--drift:${drift}px;--breath:${breath}s;--phase:-${phase}s;--depth:${depth}px`,
+  };
+};
+---
+
+{
+  /* Nothing to draw before the site has tags, and Math.min of an empty list is Infinity, which
+  would put NaN into a class name. The terms arrive sorted by their front-matter name, which is
+  what mixes the sizes: alphabetical order has nothing to do with how often a tag is used, so the
+  big words fall among the small ones instead of forming a pyramid.
+
+  Two elements and not one: the outer one is what the script measures and the inner one is what
+  it moves the words inside of, so that a box read from the page is never a box that is itself
+  being transformed.
+
+  This wrapping row is the markup, and the sphere is a class the script adds to it. Everything
+  that reads the page rather than looks at it - a crawler, a screen reader, find-in-page, a
+  visitor with JavaScript off or with reduced motion asked for - gets this row, which is the same
+  set of links in the same order. */
+}
+{
+  tags.length > 0 && (
+    <nav
+      {...langAttrs({ "aria-label": site.sections.tags })}
+      class="tag-cloud mx-auto block max-w-3xl px-4 pt-10 sm:hidden"
+    >
+      <div class="tag-cloud__sky flex flex-wrap items-center justify-center gap-x-5 gap-y-3">
+        {tags.map((tag) => {
+          const step = stepOf(tag.count);
+          const motion = motionOf(tag.name, step);
+          return (
+            <span
+              class="tag-cloud__word"
+              style={motion.style}
+              data-drift={String(motion.drift)}
+              data-breath={String(motion.breath)}
+              data-phase={String(motion.phase)}
+            >
+              <a
+                href={`/tags/${encodeSlug(tag.slug)}/`}
+                title={`${tag.title} (${tag.count})`}
+                class:list={[
+                  "tag-cloud__link font-semibold leading-none text-blue-700 hover:text-blue-500 dark:text-blue-300 dark:hover:text-blue-100",
+                  sizes[step],
+                ]}
+              >
+                {tag.title}
+              </a>
+            </span>
+          );
+        })}
+      </div>
+    </nav>
+  )
+}
+
+<script>
+  import "../scripts/tag-cloud";
+</script>
+
+<style>
+  /* Scoped, unlike the carousel's and the search page's stylesheets, and for the reason those two
+     are not: every element here is rendered by this component, so Astro's own attribute reaches
+     all of them. The script sets two custom properties and creates no markup. */
+
+  /* The rules below come in two sets. The first is the wrapping row, which is what the markup is
+     and what a visitor without JavaScript or with reduced motion keeps. The second, under
+     .tag-cloud--sphere, is the globe, and that class is added by the script - so nothing here
+     assumes the script ran. */
+
+  .tag-cloud {
+    /* The depth the row is seen through: it is what makes the per-word translateZ visible at
+       all. The sphere does its own projection in the script and does not use this. */
+    perspective: 900px;
+  }
+
+  .tag-cloud__sky {
+    /* Without this the words are flattened into the parent, and their translateZ - the whole
+       depth of the row - is discarded. */
+    transform-style: preserve-3d;
+  }
+
+  .tag-cloud__word {
+    display: inline-block;
+    transform: translate3d(0, 0, var(--depth, 0px));
+    animation: tag-cloud-breathe var(--breath, 8s) ease-in-out var(--phase, 0s)
+      infinite;
+  }
+
+  /* ---------- the globe ---------- */
+
+  /* A height, because the words leave the flow: absolutely positioned children give their parent
+     nothing to be as tall as. clamp keeps it a sphere rather than a letterbox on a wide screen
+     and stops it eating the page on a small one. */
+  .tag-cloud--sphere {
+    position: relative;
+    height: clamp(17rem, 34vw, 23rem);
+  }
+
+  .tag-cloud--sphere .tag-cloud__sky {
+    position: absolute;
+    inset: 0;
+    display: block;
+  }
+
+  /* Added 2026-09-28 with dragging (src/scripts/tag-cloud.ts, "Dragging"). touch-action: none
+     hands every movement of a finger on the globe to the script, in all four directions; without
+     it the browser takes the finger for a page scroll and cancels the drag. The price, accepted
+     for the colleague's four directions: a scroll that starts on the globe does not scroll the
+     page, so a visitor scrolls from the carousel or the footer instead. pan-y would give the
+     page's vertical scroll back and leave the globe only left and right. user-select and
+     -webkit-user-drag stop a mouse drag from selecting the words or picking a link up. The
+     grab cursor tells a mouse that the globe can be taken hold of; a word keeps the link cursor. */
+  .tag-cloud--sphere {
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: grab;
+  }
+
+  .tag-cloud--sphere .tag-cloud__link {
+    -webkit-user-drag: none;
+  }
+
+  /* Every word starts at the middle and the script moves it from there, which is why the inline
+     transform it writes begins by pulling the word back by half its own size. The breathing is
+     off because the script folds it into that same transform: an animation beats an inline
+     declaration on the property it animates, so leaving it on would pin the word to the centre
+     and only let it bob. */
+  .tag-cloud--sphere .tag-cloud__word {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    animation: none;
+    white-space: nowrap;
+    will-change: transform, opacity;
+  }
+
+  /* The transform is written out in full in both frames, because a transform property replaces
+     the one on the element rather than adding to it: leaving translateZ out of a frame would drop
+     the word to the back of the block for the length of the breath. */
+  @keyframes tag-cloud-breathe {
+    0%,
+    100% {
+      transform: translate3d(
+        0,
+        calc(var(--drift, 4px) * -1),
+        var(--depth, 0px)
+      );
+    }
+    50% {
+      transform: translate3d(0, var(--drift, 4px), var(--depth, 0px));
+    }
+  }
+
+  /* The word under the pointer grows and every other word rolls back - smaller, dimmer, further
+     away - so that one word at a time is the one being read. Asked for by the owner on
+     2026-09-22, after the hover growth was already in.
+
+     It is the `scale` property and not a scale() inside `transform`, and that is the whole reason
+     this works: `transform` on the span is owned by the breathing animation, and an animation
+     beats an ordinary declaration on the same property, so a transform written here would simply
+     never be applied. `scale`, `rotate` and `translate` are separate properties in CSS today and
+     compose with whatever `transform` is doing.
+
+     The condition is :has() and not a plain :hover on the container, because the gaps between the
+     words belong to the container too: with :hover the whole cloud would recede whenever the
+     pointer crossed a gap, with nothing standing out to explain why. A browser without :has()
+     ignores both rules and keeps the plain growth below, which is the reason that one is written
+     on its own as well. */
+  .tag-cloud__link {
+    display: inline-block;
+    /* Room around the letters, so that the area answering a click is bigger than the word - the
+       smallest tags are a few characters wide and the globe shrinks them further on the far side.
+       Added 2026-09-22 with the larger smallest size, for the same reason. */
+    padding: 0.15rem 0.3rem;
+    transition:
+      scale 0.25s ease-out,
+      opacity 0.25s ease-out,
+      color 0.2s ease-out;
+  }
+
+  .tag-cloud__link:hover {
+    scale: 1.2;
+  }
+
+  .tag-cloud__sky:has(.tag-cloud__link:hover) .tag-cloud__link {
+    scale: 0.85;
+    opacity: 0.4;
+  }
+
+  .tag-cloud__sky:has(.tag-cloud__link:hover) .tag-cloud__link:hover {
+    scale: 1.2;
+    opacity: 1;
+  }
+
+  /* Everything that moves by itself is off for a visitor who asked for less motion: the
+     breathing here, and the globe in the script, which makes the same test and never adds its
+     class - so the block stays the row it is rendered as and simply stands still. The hover
+     growth stays, without its transition: it happens only while the pointer is held on a word,
+     which is the visitor moving, not the page. */
+  @media (prefers-reduced-motion: reduce) {
+    .tag-cloud__word {
+      animation: none;
+    }
+
+    .tag-cloud__link {
+      transition: none;
+    }
+  }
+</style>

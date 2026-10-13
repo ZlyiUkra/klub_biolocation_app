@@ -1,0 +1,261 @@
+---
+// /auth/signup/ - sign-up, with the club's own accounts (T053 of specs/001-self-hosted-club-site; FR-012, FR-012a).
+//
+// Rewritten on 2026-10-11 for the move off the previous sign-in provider: a plain form that posts to
+// `POST /api/auth/signup`. A new account is a guest (the server takes no status from the form) and is signed in at
+// once. No mail is sent and none is checked until phase 9, which is why the page says so.
+//
+// Decisions that would otherwise look like mistakes:
+// - The second password field is checked in the browser only; the server never sees it. It is there because there is
+//   no mail to recover a password with, so a typo would cost a person their account (the owner's choice of
+//   2026-10-11). Both password fields have a show/hide control.
+// - The honeypot is the field `website`, kept out of sight by position and hidden from a screen reader and from the
+//   tab order. A person never fills it; a script that fills every field does, and the server refuses the form
+//   (T159, the owner's variant A). It is not `display: none`, which some bots skip on purpose.
+// - The messages next to a field are written here from the server's stable `field` and `problem`; the server's own
+//   English text is not shown.
+// - Added 2026-10-13 (T188): the form says when it was opened (`startedAt`, on the SERVER's clock, learned from the Date
+//   header of a `GET /api/auth/me` the page asks for at once), and the server refuses one sent in under three seconds,
+//   with no time, from the future or a day old, with the honeypot's plain 400. The page never lets the server do that to
+//   a person: a password manager can fill every field and press the button within three seconds, so the script holds
+//   the send back for the rest of them (src/lib/fill-time.ts has the number). A script that does not run the page
+//   gains nothing, because the rule is the server's.
+import Base from "../../layouts/Base.astro";
+import AuthField from "../../components/AuthField.astro";
+// Changed 2026-10-12 (T178) with the two interface languages (src/i18n/lang.ts): every word of the page is in the
+// dictionary (src/i18n/strings.ts) and printed through T, so a switch of language changes it in place.
+import { ui } from "../../i18n/strings";
+import T from "../../components/T.astro";
+import { site } from "../../config";
+
+// Removed 2026-10-11 (T052): the `prerender = true` line that stood here is gone. A prerendered file is the same for
+// every visitor, so the header could not know who was looking; the page is rendered per request now, and the header is
+// right from the first byte (T142).
+---
+
+<Base title={ui.signup_title}>
+  <section class="mx-auto max-w-md">
+    <h1 class="mb-6 text-2xl font-bold"><T s={ui.signup_title} /></h1>
+    <form id="signup-form" class="space-y-4" novalidate>
+      <AuthField
+        id="signup-name"
+        name="displayName"
+        label={ui.signup_name}
+        autocomplete="name"
+        maxlength={80}
+        required
+      />
+      <AuthField
+        id="signup-email"
+        name="email"
+        label={ui.form_email}
+        type="email"
+        autocomplete="email"
+        required
+        hint={ui.signup_email_hint}
+      />
+      <AuthField
+        id="signup-login"
+        name="login"
+        label={ui.signup_login}
+        autocomplete="username"
+        maxlength={32}
+        hint={ui.signup_login_hint}
+      />
+      <AuthField
+        id="signup-password"
+        name="password"
+        label={ui.form_password}
+        type="password"
+        autocomplete="new-password"
+        minlength={8}
+        required
+        toggle
+        hint={ui.form_password_min}
+      />
+      <AuthField
+        id="signup-repeat"
+        name="repeat"
+        label={ui.form_repeat_password}
+        type="password"
+        autocomplete="new-password"
+        required
+        toggle
+      />
+      <div
+        class="absolute -left-[9999px] h-px w-px overflow-hidden"
+        aria-hidden="true"
+      >
+        <label for="signup-website"><T s={ui.signup_honeypot} /></label>
+        <input
+          id="signup-website"
+          name="website"
+          type="text"
+          tabindex="-1"
+          autocomplete="off"
+        />
+      </div>
+      <p
+        id="signup-message"
+        class="hidden rounded bg-gray-100 p-3 text-sm dark:bg-slate-800"
+        role="alert"
+      >
+      </p>
+      <button
+        id="signup-submit"
+        type="submit"
+        class="w-full rounded bg-blue-600 px-4 py-2 text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+      >
+                <T s={ui.signup_submit} />
+      </button>
+    </form>
+    <p class="mt-6 text-sm text-gray-600 dark:text-slate-400">
+      <T s={ui.signup_have_account} />
+      <a
+        href={site.auth.signIn}
+        class="text-blue-600 hover:underline dark:text-blue-400"><T s={ui.signin_submit} /></a
+      >
+    </p>
+    <noscript>
+      <p class="mt-4 text-sm"><T s={ui.signup_noscript} /></p>
+    </noscript>
+  </section>
+</Base>
+
+<script>
+  // Top level of the template, never inside an expression: a bundled script there is not hoisted
+  // at all (CLAUDE.md, measured 2026-09-22).
+  import {
+    bindPasswordToggles,
+    commonRefusal,
+    messageArea,
+    sendJson,
+    waitLead,
+  } from "../../scripts/auth-forms";
+    import { site } from "../../config";
+  import { ui } from "../../i18n/strings";
+  import type { Phrase } from "../../i18n/lang";
+  import { setPhrase } from "../../scripts/lang";
+  // Added 2026-10-13 (T188): the fill-time rule's number, and the server's clock.
+  import { fillTime } from "../../lib/fill-time";
+  import { serverNow } from "../../scripts/auth-forms";
+
+  const form = document.getElementById("signup-form");
+  const submit = document.getElementById("signup-submit");
+  const area = document.getElementById("signup-message");
+  bindPasswordToggles();
+
+  // Added 2026-10-13 (T188): when the page was opened by this device's clock, and a first request whose answer teaches
+  // the script the server's clock (the answer's body is not used).
+  const openedAt = Date.now();
+  void sendJson("GET", "/api/auth/me");
+
+  // The sentence for a field's `problem` code; the same words whichever side noticed it.
+  const sentences: Record<string, Record<string, Phrase>> = {
+    email: {
+      invalid: ui.signup_email_invalid,
+      taken: ui.signup_email_taken,
+    },
+    displayName: {
+      required: ui.signup_name_required,
+      too_long: ui.signup_name_long,
+    },
+    login: {
+      invalid: ui.signup_login_invalid,
+      taken: ui.signup_login_taken,
+    },
+    password: {
+      too_short: ui.form_password_short,
+      too_long: ui.form_password_long,
+    },
+  };
+  const fieldIds: Record<string, string> = {
+    email: "signup-email",
+    displayName: "signup-name",
+    login: "signup-login",
+    password: "signup-password",
+  };
+
+  function field(id: string): HTMLInputElement {
+    const element = document.getElementById(id);
+    if (!(element instanceof HTMLInputElement)) throw new Error(id);
+    return element;
+  }
+  function fieldError(id: string, text: Phrase | null): void {
+    const slot = document.querySelector(`[data-field-error="${id}"]`);
+    if (!(slot instanceof HTMLElement)) return;
+    if (text === null) slot.textContent = "";
+    else setPhrase(slot, text);
+    slot.classList.toggle("hidden", text === null);
+  }
+  function clearFieldErrors(): void {
+    for (const id of Object.values(fieldIds)) fieldError(id, null);
+    fieldError("signup-repeat", null);
+  }
+
+  if (
+    form instanceof HTMLFormElement &&
+    submit instanceof HTMLButtonElement &&
+    area instanceof HTMLElement
+  ) {
+    const message = messageArea(area);
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      message.clear();
+      clearFieldErrors();
+      const password = field("signup-password");
+      // Checked here and not by the server, which never receives the repeat (see the header).
+      if (password.value !== field("signup-repeat").value) {
+        fieldError("signup-repeat", ui.form_passwords_differ);
+        return;
+      }
+      submit.disabled = true;
+      // Added 2026-10-13 (T188): hold the send back until the form has been open for the minimum fill time (a person
+      // whose password manager fills the fields at once), then say when it was opened in the server's clock.
+      const sinceOpen = Date.now() - openedAt;
+      if (sinceOpen < fillTime.minMs) {
+        await new Promise((done) =>
+          setTimeout(done, fillTime.minMs - sinceOpen + 100),
+        );
+      }
+      const answer = await sendJson("POST", "/api/auth/signup", {
+        displayName: field("signup-name").value,
+        email: field("signup-email").value,
+        login: field("signup-login").value,
+        password: password.value,
+        website: field("signup-website").value,
+        startedAt: serverNow() - (Date.now() - openedAt),
+      });
+
+      if (answer.status === 201) {
+        // A new account has one place to go: its own page, where the session list and the password form are.
+        location.replace(site.auth.account);
+        return;
+      }
+      if (answer.status === 429) {
+        submit.disabled = true;
+        message.countdown(answer.retryAfter || 60, waitLead, () => {
+          submit.disabled = false;
+        });
+        return;
+      }
+      submit.disabled = false;
+      const common = commonRefusal(answer);
+      if (common !== null) {
+        message.show(common);
+        return;
+      }
+      const fieldName = String(answer.body["field"] ?? "");
+      const problem = String(answer.body["problem"] ?? "taken");
+      const sentence = sentences[fieldName]?.[problem];
+      const id = fieldIds[fieldName];
+      if (sentence !== undefined && id !== undefined) {
+        fieldError(id, sentence);
+        field(id).focus();
+      } else {
+        message.show(ui.signup_failed);
+      }
+    });
+  }
+</script>

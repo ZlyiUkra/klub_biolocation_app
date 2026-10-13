@@ -1,0 +1,175 @@
+/* The six reactions above the comments of a post or a video (T187 of specs/001-self-hosted-club-site), written on
+   2026-10-13 to look as close as it can to the previous comment service's row, which the owner asked for: the question
+   in bold, the number of responses under it in small bold, six round pictures in a centred row, and the name of each
+   in small bold under it.
+
+   A plain .css file imported by the component, for the reason src/styles/comments.css gives: the counts and the marked
+   choice are written by src/scripts/reactions.ts, outside Astro's scoping. .dark is the class Head.astro puts on
+   <html>, and the colours are theme() calls, as in comments.css, so they are the pinned palette's values. */
+
+.reactions {
+  margin: 0 0 1.75rem;
+  text-align: center;
+}
+
+.reactions .reactions-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: theme(colors.gray.900);
+}
+
+.dark .reactions .reactions-title {
+  color: theme(colors.gray.100);
+}
+
+.reactions .reactions-total {
+  margin: 0.2rem 0 0.9rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: theme(colors.gray.700);
+}
+
+.dark .reactions .reactions-total {
+  color: theme(colors.gray.300);
+}
+
+.reactions .reactions-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 1.1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A button is the picture, its name and its count; transparent, no frame, as the previous service's were. */
+.reactions .reaction {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 3.75rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: transparent;
+  padding: 0.3rem 0.4rem 0.35rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: theme(colors.gray.700);
+  cursor: pointer;
+}
+
+.dark .reactions .reaction {
+  color: theme(colors.gray.200);
+}
+
+/* Every rule below has one class more than the article styles of main.css, which reach this markup because the
+   block stands inside the article: `.prose ul` (a bullet and a left padding), `.article-prose li + li` (a gap
+   between items), `.prose img` (margins, rounded corners, a shadow) and `.prose h3` (margins, size). The first
+   version of this file did not reset them and the pictures came out with a shadow box and a bullet each. */
+.reactions .reactions-item {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reactions .reaction-picture {
+  display: block;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin: 0;
+  max-width: none;
+  border-radius: 0;
+  box-shadow: none;
+  transition: transform 0.12s ease-out;
+}
+
+.reactions .reaction:hover .reaction-picture {
+  transform: scale(1.15);
+}
+
+/* The count stands above the picture and keeps its place when it is empty, so the row does not jump. */
+.reactions .reaction-count {
+  min-height: 0.9rem;
+  font-size: 0.75rem;
+  line-height: 0.9rem;
+}
+
+.reactions .reaction-count[data-empty="true"] {
+  visibility: hidden;
+}
+
+/* The viewer's own choice: a tint behind it and the colour of the site's links. */
+.reactions .reaction[aria-pressed="true"] {
+  background: rgb(37 99 235 / 0.12);
+  color: theme(colors.blue.600);
+}
+
+.dark .reactions .reaction[aria-pressed="true"] {
+  background: rgb(96 165 250 / 0.18);
+  color: theme(colors.blue.300);
+}
+
+/* A row the viewer may not use is shown, not hidden: the counts are public. */
+.reactions .reaction[aria-disabled="true"] {
+  cursor: default;
+}
+
+.reactions .reaction[aria-disabled="true"]:hover .reaction-picture {
+  transform: none;
+}
+
+.reactions .reaction:focus-visible {
+  outline: 2px solid theme(colors.blue.600);
+  outline-offset: 2px;
+}
+
+.reactions .reactions-note,
+.reactions .reactions-message {
+  margin: 0.75rem 0 0;
+  font-size: 0.9rem;
+  color: theme(colors.gray.600);
+}
+
+.dark .reactions .reactions-note {
+  color: theme(colors.gray.400);
+}
+
+.reactions .reactions-note a {
+  color: theme(colors.blue.600);
+}
+
+.reactions .reactions-message {
+  color: theme(colors.red.700);
+}
+
+.dark .reactions .reactions-message {
+  color: theme(colors.red.300);
+}
+
+.reactions .reactions-note[hidden],
+.reactions .reactions-message[hidden] {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  /* Six in one row at 400 px in English; the longer Russian names wrap to a second row, centred. */
+  .reactions .reactions-row {
+    gap: 0.25rem 0.25rem;
+  }
+
+  .reactions .reaction {
+    min-width: 0;
+    padding-inline: 0.2rem;
+  }
+
+  .reactions .reaction-picture {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+}

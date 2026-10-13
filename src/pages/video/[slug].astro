@@ -1,0 +1,96 @@
+---
+// One video, /video/<slug>/, rendered through VideoLayout.astro: the player, then the body,
+// then the comments. Since 2026-09-22; until then it rendered through Post.astro with the
+// player in this file (VIDEO-PAGE.md, section 4). The previous and next links walk the videos
+// in getVideos() order, newest first, as posts/[slug].astro does for the posts. The comments
+// block is the post page's, with the video's address and slug as the Disqus thread; the slug
+// variable was `videoId` and is `videoIdentifier`, so that it is not mistaken for the YouTube
+// id in the front matter.
+//
+// Changed 2026-10-10 (T139 of specs/001-self-hosted-club-site): the data comes from the backend through
+// src/lib/api-client.ts, one call, and no longer from the content collection. The backend sends the text already
+// rendered (the public part, its headings, and the members-only block in its own field), so the page renders no
+// Markdown. A video the viewer may not see is the same answer as a missing one: the 404 page.
+//
+// Changed 2026-10-10 (T034): rendered on demand; getStaticPaths() and the `prerender` line of T032 are gone. The
+// address /video/<year>/, which this route would also receive, is passed on to the list route by src/middleware.ts
+// before it gets here.
+import VideoLayout from "../../layouts/VideoLayout.astro";
+// Added 2026-10-12 (T090): the page of a video the viewer sees only as a card.
+import LockedEntry from "../../layouts/LockedEntry.astro";
+// Changed 2026-10-13 (T106): the site's own comments replace the previous service's component.
+import Comments from "../../components/Comments.astro";
+import { getVideo } from "../../lib/api-client";
+import { apiVideoLink, videoPageData } from "../../lib/video";
+
+const context = { cookie: Astro.request.headers.get("cookie") ?? undefined };
+const answer = await getVideo(Astro.params.slug ?? "", context);
+// Changed 2026-10-12 (T090): an entry the viewer sees as a card (`view` "teaser", `content` null) is the locked page, not
+// a 404; one the viewer may not see at all is still the 404 page, the same answer as a missing one.
+if (answer === null) return Astro.rewrite("/404");
+const { entry, prev, next } = answer;
+const content = entry.content;
+const video = content?.kind === "video" ? videoPageData(entry, content) : null;
+if (video === null && entry.view !== "teaser") return Astro.rewrite("/404");
+
+// Added 2026-10-10 (T139): the text is the public part, then the members-only block in the markup the Markdown
+// produced for it (a div with the data-members-only attribute, a line break inside at both ends), which the layout's
+// style and script hide until access is confirmed. Built as one string so that the markup is byte for byte the
+// build's before the switch (compared, 2026-10-10).
+const body =
+  content?.kind !== "video"
+    ? ""
+    : content.descriptionHtml +
+      (content.membersOnlyHtml === null
+        ? ""
+        : // Changed 2026-10-11 (T081): a viewer who may play the video gets the block already shown (the class the layout's
+          // script adds when the player appears); under the "hidden" setting a viewer who may not play gets it marked
+          // hidden, as before, until a player appears.
+          `\n<div data-members-only=""${content.membersOnlyHidden ? "" : ' class="members-open"'}>\n${content.membersOnlyHtml}\n</div>`);
+
+// Changed 2026-09-22: the address comes from videoUrl() in lib/video.ts, which is where a video's
+// address is decided - the list cards and the previous/next links already go through it - instead
+// of being assembled here from the slug. The Disqus thread is keyed by this URL, so a copy of the
+// pattern left behind in this file would orphan every comment on a video the day /video/ moves.
+// The local name is commentsUrl, since videoUrl is now the imported function; the videoIdentifier
+// alias is gone, because passing video.slug directly says what the alias was there to say (the
+// header note below explains why it was not called videoId).
+// Removed 2026-10-13 (T106): `commentsUrl`: the thread is keyed by kind and slug (src/components/Comments.astro).
+---
+
+{
+  video === null || content?.kind !== "video" ? (
+    <LockedEntry
+      kind="video"
+      slug={entry.slug}
+      title={entry.title}
+      date={new Date(entry.date)}
+      summary={entry.summary}
+      tags={entry.tags}
+    />
+  ) : (
+    <VideoLayout
+      video={video}
+      headings={content.headings}
+      prev={prev && apiVideoLink(prev)}
+      next={next && apiVideoLink(next)}
+    >
+      <Fragment set:html={body} />
+      <hr class="my-8 border-gray-200" />
+
+      {/* Changed 2026-09-22: the reveal button that stood here moved into Disqus.astro, next to the
+    script that binds to it; this file was one of the two copies of that block. The rendered
+    markup is unchanged. */}
+      {/* Changed 2026-09-28, the owner's choice: on a paid video the comments stay hidden until the
+    access service has answered 200 (Disqus.astro, the locked prop). */}
+      {/* Changed later on 2026-09-28, the owner's decision: on a paid video the comments are closed
+    to a guest only. They show as soon as the page has confirmed that the visitor is signed in,
+    access or not, so that someone who has not paid yet can be instructed there; the player and
+    the members-only block (block 2, lib/video.ts) still wait for access. `locked` means "until
+    signed in" now (Disqus.astro). */}
+      {/* Changed 2026-10-13 (T106, T151): the club's own comments, shown to everyone who sees the page, a guest
+    included; the "locked until signed in" prop of the previous component is gone. */}
+      <Comments kind="video" slug={video.slug} />
+    </VideoLayout>
+  )
+}

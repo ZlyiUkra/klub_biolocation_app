@@ -1,0 +1,142 @@
+---
+// The video page: maps one entry of the `video` collection onto ArticleLayout.astro, the frame
+// shared with the post page (Post.astro), and puts the player above the text through the
+// frame's `media` slot. Added 2026-09-22 (VIDEO-PAGE.md, section 4); until then the video route
+// rendered through Post.astro with its prop widened to `Post | Video`, and the player sat in
+// the route file.
+//
+// What a video supplies that a post does not: `duration` ("12:34") as the text of the clock
+// item, in place of the reading time - a video page used to show "0 min read", the word count
+// of a one-sentence body - and the description as the only share text. The four post-only
+// fields (lastmod, summary, share_title, share_description) are not part of the video schema,
+// so the "last updated" line shows the date itself.
+//
+// The player is YouTube's embeddable one at www.youtube.com/embed/<id>, where `videoId` is the
+// id from a watch?v= address, eleven characters; the sample entries carry placeholders, so the
+// player shows YouTube's own error until real ids are entered. Without a `videoId` the block
+// is left empty. `videoPlatform` and `videoUrl` are stored and not read: every video is a
+// YouTube video for now. The address was `youtube.com{post.data.videoId}` until 2026-09-22;
+// VIDEO-PAGE.md, section 2.
+//
+// Added 2026-09-28: a paid video (`access: paid`) gets PaidVideo.astro in the player's place,
+// which asks the access service for the player address; the entry itself holds no id
+// (VIDEO-PAGE.md 6.1, PAID-VIDEO.md). `player` is computed for a public video only, although the
+// schema already keeps videoId out of a paid one, so that this file cannot print an id for a paid
+// entry even if the schema's rule were loosened.
+import ArticleLayout from "./ArticleLayout.astro";
+import type { MarkdownHeading } from "astro";
+// membersOnlyHeadings added 2026-09-28 (members-only blocks, lib/video.ts).
+// Changed 2026-10-10 (T139 of specs/001-self-hosted-club-site): the layout takes plain data (VideoPageData and two
+// NavLinks) and no longer a collection entry, so the page is the same whether the video came from a file or from
+// the backend. membersOnlyHeadings() is not imported any more: the headings it filtered out are never in the list
+// the backend sends (it stores the headings of the public text only, migration 007).
+import { videoUrl, type VideoPageData } from "../lib/video";
+import type { NavLink } from "../lib/lists";
+// Changed 2026-10-11 (T082): one player component for every video; it was PaidVideo.astro.
+import VideoPlayer from "../components/VideoPlayer.astro";
+
+interface Props {
+  video: VideoPageData;
+  headings: MarkdownHeading[];
+  prev: NavLink | null;
+  next: NavLink | null;
+}
+
+const { video, headings, prev, next } = Astro.props;
+// Changed 2026-10-10 (T139): `data` is the plain video itself; the names below are the ones the old code used.
+const data = video;
+const paid = data.paid;
+// Changed 2026-09-28 at the owner's request, to send fewer visitors off to YouTube: the
+// privacy-enhanced host youtube-nocookie.com, where YouTube sets no cookie until play is
+// pressed, and rel=0, which limits the videos suggested at the end to this video's own channel.
+// That is all YouTube allows: the title, the channel link, the logo and "More videos" always
+// show ("YouTube Embedded Player Parameters"), and hiding or covering a link in the player is
+// against its Developer Policies, III.I.4 and III.I.6. The paid player gets the same address
+// from workers/video-access/worker.mjs; change the two together.
+// Changed 2026-10-11 (T082): the frame is printed here only for a YouTube id. A public video on another provider
+// (VK, Rutube, Yandex Disk) used to get this YouTube address too, with the wrong id; now the player component asks the
+// backend for its address.
+const player =
+  !paid && data.videoId && (data.platform ?? "youtube") === "youtube"
+    ? `https://www.youtube-nocookie.com/embed/${data.videoId}?rel=0`
+    : undefined;
+// Added 2026-10-11 (T152, the owner's rule: after a video's own period the page stays and the video does not play):
+// the backend says `expired`, and the player, free or paid, is replaced by the notice below. The text stays on the
+// page. The date is shown as the site shows dates elsewhere, day.month.year.
+// Changed 2026-10-11 (T082): `ended` is gone; VideoPlayer.astro decides the expired state from `lecture` itself.
+const endedOn =
+  data.availableUntil === ""
+    ? ""
+    : data.availableUntil.split("-").reverse().join(".");
+// Added 2026-09-28 with the members-only blocks (lib/video.ts): their headings stay out of the
+// table of contents, which is printed for everyone and would otherwise name, and link to, a part
+// of the page a guest cannot see. A member sees those headings in the text, not in the contents.
+// Changed 2026-10-10 (T139): the list arrives without them, see the import note above.
+const tocHeadings = headings;
+---
+
+<ArticleLayout
+  title={data.title}
+  description={data.description}
+  date={data.date}
+  updated={undefined}
+  categories={data.categories}
+  tags={data.tags}
+  timeLabel={data.duration}
+  shareTitle={data.title}
+  shareTexts={[data.description]}
+  headings={tocHeadings}
+  prev={prev}
+  next={next}
+  isVideo={true}
+>
+  {
+    /* The colleague's note, kept from the route file where the player used to be:
+    тут можно закрыть доступ к конкретным лекциям: если пользователь не оплатил, вместо iframe
+    от YouTube будет показываться красивая заглушка «Купить курс за ХХХ рублей», а если оплатил
+    - будет рендериться сам плеер */
+  }
+  <div slot="media" class="video-wrapper mb-8">
+    {
+      /* Changed 2026-10-11 (T082): the three pieces that stood here (the ended notice, the paid stub, the public
+      frame) are one component, which knows the states by `lecture` (see its header). */
+    }
+    <VideoPlayer
+      slug={video.slug}
+      href={videoUrl(video)}
+      title={data.title}
+      lecture={data.lecture}
+      embed={player}
+      endedOn={endedOn}
+    />
+  </div>
+  <slot />
+</ArticleLayout>
+
+{
+  /* Added 2026-09-28 with the members-only blocks (lib/video.ts). A block comes from the entry's
+  Markdown, which Astro does not stamp with this file's scope, so the rule has to be global; it
+  reaches video pages only, the only pages that load this layout. The block is hidden from the
+  first paint, JavaScript on or off, and shown by the class the handler below adds. */
+}
+<style is:global>
+  [data-members-only]:not(.members-open) {
+    display: none;
+  }
+</style>
+
+<script>
+  // Added 2026-09-28: shows the members-only blocks once the access check has put the player in
+  // place - the event src/scripts/paid-video.ts sends, the same one that shows the comments in
+  // Disqus.astro. A page without such a block does nothing.
+  import { site } from "../config";
+
+  const blocks = document.querySelectorAll("[data-members-only]");
+  if (blocks.length > 0) {
+    document.addEventListener(
+      site.videoAccess.grantedEvent,
+      () => blocks.forEach((block) => block.classList.add("members-open")),
+      { once: true },
+    );
+  }
+</script>

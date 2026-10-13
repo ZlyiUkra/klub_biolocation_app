@@ -1,0 +1,379 @@
+/* The search page, /search/. Written on 2026-09-22 with the page itself, and kept out of a <style>
+   block in src/pages/search.astro on purpose: Astro scopes a component's CSS by stamping an
+   attribute onto the elements it renders, and every result on this page is created by
+   src/scripts/search.ts in the browser, so scoped rules matched nothing - the first build came out
+   as unstyled text with the browser's yellow mark. A .css file is global. src/styles/carousel.css
+   is global for the same kind of reason.
+
+   Imported by the page alone, and Astro bundles CSS per page, so no other page carries it.
+
+   The colours are the ones the theme's cards already use, written out rather than taken from
+   Tailwind: this file has to style markup that Tailwind never sees, so a utility class would not
+   be generated for it. .dark is the class Head.astro puts on <html>. */
+
+/* Changed 2026-09-30, from a Tailwind 3.4 audit the owner ordered: the colours are theme() calls,
+   where they were hex literals. The note above is right that no utility class can reach this
+   markup, but theme() is a CSS function that Tailwind resolves in every stylesheet it processes
+   (Functions & Directives, theme()), and this file goes through it like any other. The literals
+   were Tailwind 3's default palette, while tailwind.config.cjs pins the blues, the greys and the
+   slates to the values of the Hugo build (Tailwind 4), so a link here was #2563eb against #155dfc
+   everywhere else. Each literal became the colour of the same name; the unpinned ones resolve to
+   exactly the value they replace. The shadows keep their rgb(): black at an opacity, not a
+   palette colour. */
+
+.search-page {
+  margin: 0 auto;
+  max-width: 64rem;
+  padding: 2rem 1rem;
+}
+
+/* ---------- the field ---------- */
+
+.search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid theme(colors.gray.200);
+  border-radius: 0.5rem;
+  background: theme(colors.white);
+  padding: 0 0.875rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.dark .search-field {
+  border-color: theme(colors.slate.700);
+  background: theme(colors.slate.900);
+}
+
+.search-field:focus-within {
+  border-color: theme(colors.blue.600);
+}
+
+.search-field__icon {
+  flex: 0 0 auto;
+  width: 1.15rem;
+  height: 1.15rem;
+  color: theme(colors.gray.400);
+}
+
+.search-field__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0.85rem 0;
+  font-size: 1rem;
+  color: theme(colors.gray.800);
+  outline: none;
+}
+
+.dark .search-field__input {
+  color: theme(colors.gray.100);
+}
+
+/* The browser draws its own clear button inside type="search", and it sits right beside ours and
+   does less: it empties the text and leaves the ticked facets standing, which on this page looks
+   like a half-finished reset. Hidden, so there is one control with one meaning. WebKit and Blink
+   need the vendor selector; Firefox draws no such button. */
+.search-field__input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search-field__clear {
+  flex: 0 0 auto;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  padding: 0.25rem 0.25rem;
+  font-size: 0.875rem;
+  color: theme(colors.blue.600);
+}
+
+.dark .search-field__clear {
+  color: theme(colors.blue.300);
+}
+
+.search-field__clear:hover {
+  color: theme(colors.blue.700);
+}
+
+.dark .search-field__clear:hover {
+  color: theme(colors.blue.200);
+}
+
+/* The broom. 1.15rem matches the magnifier on the other side of the field, so the two icons read
+   as a pair rather than as one drawing and one button. */
+.search-field__broom {
+  display: block;
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+/* ---------- the two columns ---------- */
+
+.search-layout {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  grid-template-columns: 1fr;
+}
+
+/* One column on a phone, with the filters above the results, and two from 768px. The filters keep
+   their place while the list scrolls, which is what makes them worth having on a long result
+   list. */
+@media (min-width: 768px) {
+  .search-layout {
+    grid-template-columns: 14rem 1fr;
+    gap: 2.5rem;
+  }
+
+  .search-facets {
+    position: sticky;
+    top: 6rem;
+    align-self: start;
+  }
+}
+
+/* ---------- the facets ---------- */
+
+.search-facet + .search-facet {
+  margin-top: 1.25rem;
+  border-top: 1px solid theme(colors.gray.200);
+  padding-top: 1.25rem;
+}
+
+.dark .search-facet + .search-facet {
+  border-top-color: theme(colors.slate.700);
+}
+
+.search-facet__title {
+  display: flex;
+  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: theme(colors.gray.800);
+  list-style: none;
+}
+
+.dark .search-facet__title {
+  color: theme(colors.gray.200);
+}
+
+/* The disclosure triangle is replaced by a chevron that turns, which is the shape the reference
+   page uses. ::-webkit-details-marker is still needed for Safari; list-style:none above covers
+   the rest. */
+.search-facet__title::-webkit-details-marker {
+  display: none;
+}
+
+.search-facet__title::after {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-135deg);
+  transition: transform 0.2s;
+}
+
+.search-facet:not([open]) .search-facet__title::after {
+  transform: rotate(45deg);
+}
+
+.search-facet__list {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.search-facet__item {
+  display: flex;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  font-size: 0.875rem;
+  color: theme(colors.gray.700);
+}
+
+.dark .search-facet__item {
+  color: theme(colors.slate.300);
+}
+
+.search-facet__item:hover {
+  color: theme(colors.blue.600);
+}
+
+.dark .search-facet__item:hover {
+  color: theme(colors.blue.300);
+}
+
+.search-facet__check {
+  flex: 0 0 auto;
+  width: 0.9rem;
+  height: 0.9rem;
+  accent-color: theme(colors.blue.600);
+}
+
+.search-facet__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.search-facet__count {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  color: theme(colors.gray.400);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- the results ---------- */
+
+.search-status {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  color: theme(colors.gray.600);
+}
+
+.dark .search-status {
+  color: theme(colors.slate.300);
+}
+
+.search-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.search-result {
+  position: relative;
+  border-radius: 0.5rem;
+  background: theme(colors.white);
+  padding: 1rem 1.25rem;
+  box-shadow:
+    0 1px 2px 0 rgb(0 0 0 / 0.05),
+    0 1px 3px 0 rgb(0 0 0 / 0.1);
+  transition: box-shadow 0.3s;
+}
+
+/* The card is one target. Added 2026-09-22, after the reviewer asked why only the title of a
+   result could be clicked: the anchor is stretched over the whole card, and the title is lifted
+   above it so that it keeps its own hover colour and its own focus ring. Same arrangement as a
+   card in a list (CardList.astro), where the stretched anchor is written into the markup; here
+   it is built by src/scripts/search.ts with the rest of the result.
+
+   The price is the usual one for this pattern and is worth knowing before someone reports it as
+   a fault: text under the stretched anchor cannot be selected with the mouse. */
+.search-result__cover {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+
+.search-result:hover {
+  box-shadow:
+    0 1px 2px 0 rgb(0 0 0 / 0.05),
+    0 4px 10px 0 rgb(0 0 0 / 0.12);
+}
+
+.search-result:hover .search-result__title {
+  color: theme(colors.blue.600);
+}
+
+.dark .search-result:hover .search-result__title {
+  color: theme(colors.blue.300);
+}
+
+.search-result + .search-result {
+  margin-top: 1rem;
+}
+
+.dark .search-result {
+  background: theme(colors.slate.900);
+}
+
+.search-result__title {
+  /* Above the stretched anchor, so the title is the one thing on the card with a hover and a
+     focus ring of its own. Everything else is the card, and the card is the link. */
+  position: relative;
+  z-index: 2;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: theme(colors.gray.800);
+  text-decoration: none;
+}
+
+.search-result__title:hover {
+  color: theme(colors.blue.600);
+}
+
+.dark .search-result__title {
+  color: theme(colors.gray.100);
+}
+
+.dark .search-result__title:hover {
+  color: theme(colors.blue.300);
+}
+
+.search-result__meta {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: theme(colors.gray.500);
+}
+
+.search-result__section {
+  display: inline-block;
+  border-radius: 9999px;
+  background: theme(colors.blue.50);
+  padding: 0.05rem 0.5rem;
+  color: theme(colors.blue.700);
+}
+
+.dark .search-result__section {
+  background: theme(colors.slate.800);
+  color: theme(colors.blue.300);
+}
+
+.search-result__snippet {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: theme(colors.gray.600);
+}
+
+.dark .search-result__snippet {
+  color: theme(colors.slate.300);
+}
+
+/* The line that says the query was found in the entry's tags. Smaller and quieter than the
+   snippet: it is an explanation of the result, not part of it. Added 2026-09-22. */
+.search-result__why {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: theme(colors.gray.500);
+}
+
+.dark .search-result__why {
+  color: theme(colors.slate.400);
+}
+
+/* mark carries a yellow background of the browser's own, which is the one colour on the page
+   nobody chose. These are the theme's blues instead, and the dark rule matters more than the light
+   one: the default mark on a dark card is unreadable. */
+.search-result mark {
+  border-radius: 0.2rem;
+  background: theme(colors.blue.100);
+  padding: 0 0.1rem;
+  color: inherit;
+}
+
+.dark .search-result mark {
+  background: theme(colors.blue.700);
+  color: theme(colors.slate.50);
+}

@@ -1,0 +1,167 @@
+---
+// The superuser's settings page, /admin/settings/ (T110 of specs/001-self-hosted-club-site; FR-035, FR-036; the routes
+// are GET and PUT /api/admin/settings and POST /api/admin/settings/recipient/confirm, server/src/settings/routes.ts).
+// Added 2026-10-13. Two settings, and nothing else: the address the feedback form's messages are mailed to, which a new
+// value takes only after a code mailed to it is entered, and the switch of the members-only block of a paid lecture.
+//
+// The page is the same shape as /admin/feedback/ and answers for the same reasons: markup only, src/scripts/
+// admin-settings.ts asks the backend and fills it in, and every decision (who may read, the password typed again, the
+// code, its tries and its time) is the backend's.
+//
+// Decisions that would otherwise look like mistakes:
+// - Base.astro and the panel's navigation row (AdminNav.astro), which draws this page's own link for the superuser only.
+// - The page answers 404, not a redirect, to anyone who is not the superuser, a visitor with no session and an
+//   administrator included (the owner's rule for the superuser's routes, T105; the API says the same). The flag is put
+//   into Astro.locals by src/middleware.ts from the session's account, so this is decided on the server before any
+//   markup is sent.
+// - Every change asks for the password again, in its own field, in the same request that makes the change: the form of
+//   the recipient and the form of the switch each have one, and the code's form has none (the password was typed when
+//   the code was asked for). The fields carry ym-disable-keys through AuthField, and the whole page is noindex, which the
+//   sitemap shares (/admin/ is left out of it).
+// - The forms are inside one box that the script shows once the backend has answered; nothing is drawn from a guess.
+import Base from "../../../layouts/Base.astro";
+import AdminNav from "../../../components/AdminNav.astro";
+import AuthField from "../../../components/AuthField.astro";
+import T from "../../../components/T.astro";
+import { ui } from "../../../i18n/strings";
+import { adminUi } from "../../../i18n/admin";
+
+// The page answers 404 to anyone who is not the superuser (the note at the top).
+if (Astro.locals.superuser !== true) return Astro.rewrite("/404");
+
+const primary =
+  "rounded bg-blue-600 px-4 py-2 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-50";
+const messageClass = "hidden rounded bg-gray-100 p-3 text-sm dark:bg-slate-800";
+const radioRow = "flex items-start gap-2 text-sm";
+// Added 2026-10-13 (T145): the recipient now and the address a code was sent to are an address printed as text, so the
+// two lines carry `ym-hide-content` and Yandex Metrika's Session Replay records them as random characters
+// (METRIKA.md 3.1); server/test/metrika-marks.test.ts keeps the list.
+---
+
+<Base title={ui.admin_settings_title} noindex>
+  <section class="mx-auto max-w-3xl">
+    <AdminNav current="settings" />
+    <h1 class="mb-6 text-2xl font-bold"><T s={ui.admin_settings_title} /></h1>
+    <p
+      id="settings-status"
+      class="mb-4 text-sm"
+      role="status"
+      aria-live="polite"
+    >
+      <T s={ui.auth_loading} />
+    </p>
+    <noscript>
+      <p class="text-sm"><T s={adminUi.settings_noscript} /></p>
+    </noscript>
+
+    <div id="settings-box" hidden class="space-y-12">
+      <section aria-labelledby="settings-recipient-title">
+        <h2 id="settings-recipient-title" class="mb-3 text-lg font-semibold">
+          <T s={adminUi.settings_recipient_title} />
+        </h2>
+        <p id="settings-recipient-now" class="ym-hide-content mb-4 text-sm"></p>
+
+        <form
+          id="settings-recipient-form"
+          class="max-w-md space-y-4"
+          novalidate
+        >
+          <AuthField
+            id="settings-recipient-address"
+            name="feedbackRecipient"
+            label={adminUi.settings_recipient_new}
+            type="text"
+            autocomplete="off"
+            maxlength={254}
+            required
+            hint={adminUi.settings_recipient_hint}
+          />
+          <AuthField
+            id="settings-recipient-password"
+            name="password"
+            label={ui.acct_your_password}
+            type="password"
+            autocomplete="current-password"
+            required
+            toggle
+          />
+          <p id="settings-recipient-message" class={messageClass} role="alert">
+          </p>
+          <button type="submit" id="settings-recipient-submit" class={primary}>
+            <T s={adminUi.settings_recipient_send} />
+          </button>
+        </form>
+
+        <div
+          id="settings-pending"
+          hidden
+          class="mt-6 max-w-md rounded border border-gray-200 p-4 dark:border-slate-700"
+        >
+          <p id="settings-pending-text" class="ym-hide-content mb-4 text-sm">
+          </p>
+          <form id="settings-code-form" class="space-y-4" novalidate>
+            <AuthField
+              id="settings-code"
+              name="code"
+              label={adminUi.settings_code_label}
+              type="text"
+              autocomplete="one-time-code"
+              maxlength={8}
+              required
+            />
+            <p id="settings-code-message" class={messageClass} role="alert"></p>
+            <button type="submit" id="settings-code-submit" class={primary}>
+              <T s={adminUi.settings_code_confirm} />
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <section aria-labelledby="settings-mode-title">
+        <h2 id="settings-mode-title" class="mb-3 text-lg font-semibold">
+          <T s={adminUi.settings_mode_title} />
+        </h2>
+        <p class="mb-4 max-w-xl text-sm">
+          <T s={adminUi.settings_mode_intro} />
+        </p>
+        <form id="settings-mode-form" class="max-w-md space-y-4" novalidate>
+          <fieldset class="space-y-2">
+            <legend class="sr-only"
+              ><T s={adminUi.settings_mode_title} /></legend
+            >
+            <label class={radioRow}>
+              <input type="radio" name="membersBlockMode" value="locked" />
+              <span><T s={adminUi.settings_mode_locked} /></span>
+            </label>
+            <label class={radioRow}>
+              <input type="radio" name="membersBlockMode" value="hidden" />
+              <span><T s={adminUi.settings_mode_hidden} /></span>
+            </label>
+          </fieldset>
+          <AuthField
+            id="settings-mode-password"
+            name="password"
+            label={ui.acct_your_password}
+            type="password"
+            autocomplete="current-password"
+            required
+            toggle
+          />
+          <p id="settings-mode-message" class={messageClass} role="alert"></p>
+          <button type="submit" id="settings-mode-submit" class={primary}>
+            <T s={adminUi.settings_mode_save} />
+          </button>
+        </form>
+      </section>
+
+      <p class="text-xs text-gray-500 dark:text-slate-400">
+        <T s={adminUi.settings_footnote} />
+      </p>
+    </div>
+  </section>
+</Base>
+
+<script>
+  // The panel's script; its header says what it does and why.
+  import "../../../scripts/admin-settings";
+</script>

@@ -1,0 +1,122 @@
+---
+// The comments block of a post or a video (T106 of specs/001-self-hosted-club-site; FR-032; contracts/http-api.md
+// "Comments"). It replaces Disqus.astro, which loaded a third party's thread behind a reveal button.
+//
+// Decisions that would otherwise look like mistakes:
+// - The markup is only the frame: the count, the account, the composer, the list and their places. Everything that
+//   depends on the visitor or on the thread is written by src/scripts/comments.ts after the page loads, from
+//   `/api/entries/<kind>/<slug>/comments` and `/api/auth/me`, so the page itself is the same for every viewer and is
+//   never cached with one person's comments in it.
+// - There is no reveal button and no "locked" prop any more (T151, the owner's decision of 2026-10-10): a guest who
+//   sees a paid lecture as a teaser reads its comments too, and a visitor who is not a writer is told why the field is
+//   closed. Comments are loaded with the page; a thread is one small request.
+//   Amended 2026-10-13, the owner's word: the block is still shown on load, but a button above it hides the thread and
+//   shows it again, as the previous service's block on the old site had one. It hides, it does not reveal: nothing is
+//   loaded behind it, and the choice is not remembered.
+// - A caller passes the entry's kind and slug and nothing else: the address of the thread is built by the script from
+//   them, as the backend's route is, so there is no second place that decides it (the pitfall of Disqus's `url`).
+// - The look is src/styles/comments.css, imported here because Astro bundles CSS per page and every markup this
+//   component's script creates is outside Astro's scoping (the search page's note says the same).
+import "../styles/comments.css";
+import { ui } from "../i18n/strings";
+import { commentRules } from "../lib/comment-rules";
+import { langAttrs } from "../i18n/lang";
+import T from "./T.astro";
+// Added 2026-10-13 (T187): the row of six reactions above the count.
+import Reactions from "./Reactions.astro";
+
+export interface Props {
+  /** The entry's kind, as the API names it. */
+  kind: "post" | "video";
+  /** The entry's slug, which never changes. */
+  slug: string;
+}
+
+const { kind, slug } = Astro.props;
+---
+
+<section
+  id="comments"
+  class="comments"
+  data-kind={kind}
+  data-slug={slug}
+  aria-labelledby="comments-count"
+>
+  {
+    /* Added 2026-10-13 (T106, the owner's word): the button that hides the thread and brings it back. It is written
+  hidden and the script shows it, so a browser without scripts is not offered a button that does nothing; its label
+  is the pair `comments_collapse` / `comments_expand`, swapped by the script. The block itself is shown on every load:
+  the choice is not remembered (the owner may ask for that). */
+  }
+  <div class="comments-toggle-row" data-role="toggle-row" hidden>
+    <button
+      type="button"
+      class="comments-toggle"
+      data-role="toggle"
+      aria-expanded="true"
+      aria-controls="comments-panel"
+    >
+      <T s={ui.comments_collapse} />
+    </button>
+  </div>
+
+  <div id="comments-panel" data-role="panel">
+    {
+      /* Added 2026-10-13 (T187): the six reactions stand above the count, as the previous service's block had them; the
+    button above hides them with the rest of the panel. */
+    }
+    <Reactions kind={kind} slug={slug} />
+    <div class="comments-head">
+      <h2 id="comments-count" class="comments-count" data-role="count">
+        <T s={ui.comments_count(0)} />
+      </h2>
+      <div class="comments-account" data-role="account"></div>
+    </div>
+
+    <form class="comments-composer" data-role="composer" novalidate>
+      <span
+        class="comments-avatar"
+        data-role="composer-avatar"
+        aria-hidden="true"
+      >
+        <T s={ui.comments_guest_letter} />
+      </span>
+      <div class="comments-composer-box">
+        <textarea
+          class="comments-field ym-disable-keys"
+          data-role="field"
+          rows="1"
+          maxlength={commentRules.maxChars}
+          readonly
+          {...langAttrs({
+            placeholder: ui.comments_placeholder,
+            "aria-label": ui.comments_placeholder,
+          })}></textarea>
+        <div
+          class="comments-composer-actions"
+          data-role="composer-actions"
+          hidden
+        >
+          <button type="submit" class="comments-button" data-role="submit">
+            <T s={ui.comments_post} />
+          </button>
+        </div>
+      </div>
+    </form>
+
+    <p class="comments-note" data-role="note" hidden></p>
+    <p class="comments-message" data-role="message" role="alert" hidden></p>
+    <p class="comments-status" data-role="status">
+      <T s={ui.comments_loading} />
+    </p>
+    <ol class="comments-list" data-role="list"></ol>
+
+    <noscript>
+      <p class="comments-status"><T s={ui.comments_noscript} /></p>
+    </noscript>
+  </div>
+</section>
+
+<script>
+  import "../scripts/comments";
+</script>

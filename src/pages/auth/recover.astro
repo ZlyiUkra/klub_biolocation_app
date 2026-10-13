@@ -1,0 +1,256 @@
+---
+// /auth/recover/ - the superuser's way back to the account when the password is lost (T168 of
+// specs/001-self-hosted-club-site; security-review-superuser.md section 5; step 3c of plan phase 3). Added 2026-10-11.
+//
+// The page is a plain form that posts to `POST /api/superuser/recover` (server/src/users/superuser-routes.ts); it is
+// the only page of the site that is reached with no session on purpose, and the only thing it can change is the
+// password of the superuser, with one unspent recovery code.
+//
+// Decisions that would otherwise look like mistakes:
+// - One sentence for every refusal of the identifier and the code (unknown address, no such code, a spent code, a
+//   code of somebody else): the server answers all of them alike so that the page cannot be used to learn which
+//   addresses exist, and this page does not try to tell them apart either. Only the new password has sentences of its
+//   own, because the server checks it before the code is looked up and says which rule it broke.
+// - The fresh set of ten codes is returned by the answer of the request that spent the code and is shown on this page
+//   once, with a copy button; nothing keeps it for later (REWRITE.md, the note on the data-model deviation).
+// - The page does not sign the visitor in: the old sessions of the account were ended by the server, and the new
+//   password is typed once more on the sign-in page, which is also where the visitor learns it is right.
+// - The shape (field component, message area, countdown on a pause, eye icons) is the sign-in page's, from
+//   src/scripts/auth-forms.ts.
+import Base from "../../layouts/Base.astro";
+import AuthField from "../../components/AuthField.astro";
+// Changed 2026-10-12 (T178) with the two interface languages (src/i18n/lang.ts): every word of the page is in the
+// dictionary (src/i18n/strings.ts) and printed through T, so a switch of language changes it in place.
+import { ui } from "../../i18n/strings";
+import T from "../../components/T.astro";
+import { site } from "../../config";
+---
+
+<Base title={ui.recover_title}>
+  <section class="mx-auto max-w-md">
+    <h1 class="mb-6 text-2xl font-bold"><T s={ui.recover_title} /></h1>
+    <div id="recover-intro">
+      <p class="mb-4 text-sm">
+        <T s={ui.recover_intro} />
+      </p>
+      <form id="recover-form" class="space-y-4" novalidate>
+        <AuthField
+          id="recover-identifier"
+          name="identifier"
+          label={ui.form_identifier}
+          autocomplete="username"
+          required
+        />
+        <AuthField
+          id="recover-code"
+          name="code"
+          label={ui.recover_code}
+          autocomplete="off"
+          required
+          hint={ui.recover_code_hint}
+        />
+        <AuthField
+          id="recover-password"
+          name="newPassword"
+          label={ui.recover_new_password}
+          type="password"
+          autocomplete="new-password"
+          minlength={8}
+          required
+          toggle
+          hint={ui.form_password_min}
+        />
+        <AuthField
+          id="recover-repeat"
+          name="repeat"
+          label={ui.recover_repeat_new}
+          type="password"
+          autocomplete="new-password"
+          required
+          toggle
+        />
+        <p
+          id="recover-message"
+          class="hidden rounded bg-gray-100 p-3 text-sm dark:bg-slate-800"
+          role="alert"
+        >
+        </p>
+        <button
+          id="recover-submit"
+          type="submit"
+          class="w-full rounded bg-blue-600 px-4 py-2 text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+                    <T s={ui.recover_submit} />
+        </button>
+      </form>
+      <p class="mt-6 text-sm text-gray-600 dark:text-slate-400">
+        <a
+          href={site.auth.signIn}
+          class="text-blue-600 hover:underline dark:text-blue-400"
+          ><T s={ui.recover_back} /></a
+        >
+      </p>
+    </div>
+
+    <div id="recover-done" hidden>
+      <p class="mb-4 rounded bg-gray-100 p-3 text-sm dark:bg-slate-800">
+        <T s={ui.recover_done} />
+      </p>
+      <ol
+        id="recover-codes"
+        class="ym-hide-content mb-4 list-decimal space-y-1 pl-6 font-mono text-sm"
+      >
+      </ol>
+      <p
+        id="recover-copy-message"
+        class="hidden rounded bg-gray-100 p-3 text-sm dark:bg-slate-800"
+        role="alert"
+      >
+      </p>
+      <div class="flex flex-wrap items-center gap-3">
+        <button
+          id="recover-copy"
+          type="button"
+          class="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 transition-opacity hover:opacity-80 dark:border-slate-600 dark:text-gray-200"
+        >
+                    <T s={ui.form_copy} />
+        </button>
+        <a
+          href={site.auth.signIn}
+          class="rounded bg-blue-600 px-4 py-2 text-white transition-opacity hover:opacity-90"
+          ><T s={ui.signin_submit} /></a
+        >
+      </div>
+    </div>
+    <noscript>
+      <p class="mt-4 text-sm">
+        <T s={ui.recover_noscript} />
+      </p>
+    </noscript>
+  </section>
+</Base>
+
+<script>
+  // Top level of the template, never inside an expression (CLAUDE.md, measured 2026-09-22).
+  import {
+    bindPasswordToggles,
+    commonRefusal,
+    messageArea,
+    sendJson,
+    waitLead,
+    } from "../../scripts/auth-forms";
+  import { ui } from "../../i18n/strings";
+  import type { Phrase } from "../../i18n/lang";
+
+  bindPasswordToggles();
+
+  const form = document.getElementById("recover-form");
+  const submit = document.getElementById("recover-submit");
+  const area = document.getElementById("recover-message");
+  const intro = document.getElementById("recover-intro");
+  const done = document.getElementById("recover-done");
+  const codesList = document.getElementById("recover-codes");
+  const copyButton = document.getElementById("recover-copy");
+  const copyArea = document.getElementById("recover-copy-message");
+
+  const value = (id: string): string => {
+    const element = document.getElementById(id);
+    return element instanceof HTMLInputElement ? element.value : "";
+  };
+  // The sentences of the new password's rules; the server's `problem` codes are those of the change-password form.
+  const passwordSentences: Record<string, Phrase> = {
+    too_short: ui.form_new_password_short,
+    too_long: ui.form_new_password_long,
+  };
+
+  if (
+    form instanceof HTMLFormElement &&
+    submit instanceof HTMLButtonElement &&
+    area instanceof HTMLElement &&
+    intro instanceof HTMLElement &&
+    done instanceof HTMLElement &&
+    codesList instanceof HTMLElement
+  ) {
+    const message = messageArea(area);
+    let shown: string[] = [];
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      message.clear();
+      if (
+        value("recover-identifier").trim() === "" ||
+        value("recover-code").trim() === "" ||
+        value("recover-password") === ""
+      ) {
+        message.show(ui.recover_fill_all);
+        return;
+      }
+      if (value("recover-password") !== value("recover-repeat")) {
+        message.show(ui.form_passwords_differ);
+        return;
+      }
+      submit.disabled = true;
+      const answer = await sendJson("POST", "/api/superuser/recover", {
+        identifier: value("recover-identifier").trim(),
+        code: value("recover-code").trim(),
+        newPassword: value("recover-password"),
+      });
+
+      const codes = answer.body["codes"];
+      if (answer.status === 200 && Array.isArray(codes)) {
+        shown = codes.map(String);
+        codesList.replaceChildren(
+          ...shown.map((code) => {
+            const item = document.createElement("li");
+            item.textContent = code;
+            return item;
+          }),
+        );
+        // The typed secrets are not left in the fields.
+        for (const id of [
+          "recover-code",
+          "recover-password",
+          "recover-repeat",
+        ]) {
+          const field = document.getElementById(id);
+          if (field instanceof HTMLInputElement) field.value = "";
+        }
+        intro.hidden = true;
+        done.hidden = false;
+        return;
+      }
+      if (answer.status === 429) {
+        // The pause is the server's rule (per address and a global ceiling); the countdown is only courtesy.
+        message.countdown(answer.retryAfter || 60, waitLead, () => {
+          submit.disabled = false;
+        });
+        return;
+      }
+      submit.disabled = false;
+      const common = commonRefusal(answer);
+      if (common !== null) {
+        message.show(common);
+        return;
+      }
+      if (answer.body["field"] === "newPassword") {
+        message.show(
+          passwordSentences[String(answer.body["problem"] ?? "")] ??
+            ui.recover_new_password_bad,
+        );
+        return;
+      }
+      message.show(ui.recover_refused);
+    });
+
+    if (copyButton instanceof HTMLButtonElement) {
+      const copyMessage =
+        copyArea instanceof HTMLElement ? messageArea(copyArea) : null;
+      copyButton.addEventListener("click", () => {
+        void navigator.clipboard
+          .writeText(shown.join("\n"))
+          .then(() => copyMessage?.show(ui.form_codes_copied, "info"))
+          .catch(() => copyMessage?.show(ui.form_codes_copy_failed));
+      });
+    }
+  }
+</script>

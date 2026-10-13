@@ -1,0 +1,158 @@
+---
+// The player of a paid video: a stub of the player's size, the texts of its states, and the
+// frame the script fills in for a member. Added 2026-09-28; the design is the consilium verdict in
+// .specify/consilium/2026-09-28-paid-video-access.md, and PAID-VIDEO.md is the how-to.
+//
+// Nothing here knows the video. A paid entry carries no id (src/content/config.ts refuses one),
+// so the built page holds only the slug; the script asks the access service for the player address
+// with the visitor's Clerk session token, and the service answers it to a member only. This is
+// the lock; everything on this page, the stub included, is presentation.
+//
+// The component owns the markup its script binds to (CLAUDE.md): the stub, every state's text and
+// the frame's template are here, and src/scripts/paid-video.ts only shows one state or clones the
+// template. The texts are in the site's language, like the auth pages.
+//
+// The script tag stands at the top level of this template (CLAUDE.md, measured 2026-09-22). Astro
+// 4.16 hoists it for every page whose module graph imports this component - every page under
+// /video/, not only the paid ones (Configuration Reference, experimental.directRenderScript) - so
+// the script returns at once when there is no stub, and loads Clerk only through a dynamic import
+// on a paid page with a signed-in visitor.
+import { site } from "../config";
+// Added 2026-10-12 (T178): every sentence is in both languages (src/i18n/strings.ts), printed through T.
+import { ui } from "../i18n/strings";
+import { format } from "../i18n/lang";
+import T from "./T.astro";
+// Added 2026-10-11 (T082, T149 of specs/001-self-hosted-club-site): this component, renamed from PaidVideo.astro, is
+// the one player of every video, public or paid. It no longer asks an access service: the backend's rule
+// `lecture_view` is known at render (`lecture`), so the state a visitor is in is in the first byte and the script
+// asks `GET /api/videos/<slug>/source` only when the video is open and its address is not already known:
+// - open, `embed` given (a public YouTube video): the frame is rendered here, no script work, as the page always did;
+// - open, no `embed`: the stub with "checking", and the script fills in the player (a paid lecture, a file on the
+//   server's volume, VK, Rutube, Yandex Disk);
+// - guest (no session): the sign-in link that returns to the lecture;
+// - no_access: the notice, with "check again" as a plain reload, because the server decided at render and a reload
+//   is what asks again;
+// - blocked: the notice that the account is closed;
+// - expired: the video's own period ended; the page stays, the text says so;
+// and the two states only the script can learn after the page was sent: "missing" (the entry has no source yet) and
+// "failed" (the provider did not answer).
+// The data attribute `data-paid-video` and the file src/scripts/paid-video.ts keep their names (the browser check
+// and several comments name them).
+// Changed 2026-10-11 (T083, the owner's word): the script is now src/scripts/video-player.ts; the attribute keeps its name.
+
+interface Props {
+  // The entry's slug: the key the backend knows the video by.
+  slug: string;
+  // The video page's own address, the `next` of the sign-in link.
+  href: string;
+  title: string;
+  /** What `lecture_view` said for this viewer: open, guest, no_access, blocked or expired. */
+  lecture: "open" | "guest" | "no_access" | "blocked" | "expired";
+  /** The address of a player page known at render (a public YouTube video); the frame is then printed here. */
+  embed?: string | undefined;
+  /** The day the video's own period ended, as day.month.year, for the "expired" notice. */
+  endedOn?: string;
+}
+
+const { slug, href, title, lecture, embed, endedOn = "" } = Astro.props;
+const signIn = site.auth.signIn + "?next=" + encodeURIComponent(href);
+// Which state is visible at first paint; the script changes it for an open video only.
+const visible = lecture === "open" ? (embed ? "player" : "loading") : lecture;
+---
+
+{
+  embed && visible === "player" && (
+    <iframe
+      class="aspect-video w-full rounded-xl shadow-lg"
+      src={embed}
+      title={title}
+      allowfullscreen
+    />
+  )
+}
+{
+  visible !== "player" && (
+    <div
+      data-paid-video={slug}
+      data-initial={lecture}
+      class="flex aspect-video w-full flex-col items-center justify-center gap-3 rounded-xl bg-gray-100 p-6 text-center shadow-lg dark:bg-slate-800"
+    >
+      <noscript>
+        <p><T s={ui.paid_noscript} /></p>
+      </noscript>
+      <p data-state="expired" hidden={visible !== "expired"} id="video-ended">
+                <T
+          s={format(ui.paid_ended, {
+            on: endedOn === "" ? { ru: "", en: "" } : format(ui.paid_ended_on, { day: endedOn }),
+          })}
+        />
+      </p>
+      <p data-state="loading" hidden={visible !== "loading"}>
+                <T s={ui.paid_loading} />
+      </p>
+      <div data-state="guest" hidden={visible !== "guest"}>
+        <p class="mb-3"><T s={ui.paid_guest} /></p>
+        <a
+          href={signIn}
+          class="inline-block rounded bg-blue-600 px-4 py-2 text-white transition-opacity hover:opacity-90"
+        >
+                    <T s={ui.paid_sign_in} />
+        </a>
+      </div>
+      <div data-state="no_access" hidden={visible !== "no_access"}>
+        <p class="mb-3">
+                    <T s={ui.paid_denied} />
+        </p>
+        <button
+          type="button"
+          data-recheck
+          class="rounded bg-blue-600 px-4 py-2 text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+                    <T s={ui.paid_recheck} />
+        </button>
+      </div>
+      <p data-state="missing" hidden>
+                <T s={ui.paid_missing} />
+      </p>
+      {/* Added 2026-10-02 with the owner's status model (ADMIN.md): a member with the status "blocked"
+    may open no material of the site, paid or not; the access service answers 403 "blocked", and
+    the account page says who closed it. */}
+      <p data-state="blocked" hidden={visible !== "blocked"}>
+                <T s={ui.paid_blocked} />
+      </p>
+      <p data-state="failed" hidden>
+                <T s={ui.paid_failed} />
+      </p>
+    </div>
+  )
+}
+<template data-paid-player>
+  {
+    /* The same attributes as the public player in VideoLayout.astro; change the two together. */
+  }
+  <iframe
+    class="aspect-video w-full rounded-xl shadow-lg"
+    title={title}
+    allowfullscreen></iframe>
+</template>
+<template data-paid-file>
+  {
+    /* Added 2026-09-30: the player for a lecture stored as a file (Yandex Disk), which the service
+    answers with a direct address instead of a player page (workers/video-access/worker.mjs). The
+    same frame as the iframe above; black behind the picture, as a player is. preload="metadata"
+    fetches only the header of the file until the member presses play; playsinline keeps it in the
+    page on an iPhone. controlslist="nodownload" only hides the browser's own download button - it
+    is no protection, which PAID-VIDEO.md, section 10 says plainly. */
+  }
+  <video
+    class="aspect-video w-full rounded-xl bg-black shadow-lg"
+    aria-label={title}
+    controls
+    preload="metadata"
+    playsinline
+    controlslist="nodownload"></video>
+</template>
+
+<script>
+  import "../scripts/video-player";
+</script>

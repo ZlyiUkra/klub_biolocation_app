@@ -1,0 +1,267 @@
+---
+// Port of ../klub_biolocation/themes/void/layouts/_default/list.html, following the
+// procedure in MIGRATION-PLAN.md §4.1. Class attributes are copied verbatim.
+//
+// This is a component rather than a page because Hugo uses the same list.html for two
+// routes: /posts/ (the Posts menu item) and /categories/<slug>/. The only difference between
+// them is the h1, so it is a prop. The tag pages look similar but are NOT this markup -
+// taxonomy/tag.html differs in the year badge, the date cell and the tag chips, so it is
+// ported separately in src/pages/tags/[slug]/[...page].astro. (Path changed 2026-09-19: the
+// tag route moved there when the lists got pagination.)
+//
+// HOW THE GO TEMPLATE MAPS ONTO THIS FILE
+//
+//   .Title                       -> the `title` prop.
+//   .Pages.GroupByDate "2006"    -> groupByYear() in lib/posts.ts. Years newest first.
+//   .Key                         -> group.year.
+//   .Pages.ByDate.Reverse        -> group.items, already newest first.
+//   .RelPermalink                -> card.url: `/posts/<slug>/` from postCard() in
+//                                   lib/posts.ts, `/video/<slug>/` from videoCard() in
+//                                   lib/video.ts (since 2026-09-22).
+//   .Date.Format (i18n "date_month_day_format")
+//                                -> formatMonthDay(), i.e. Hugo's "Jan 02" layout.
+//   .Summary | plainify | truncate 140
+//                                -> card.summary: summary() in lib/summary.ts, applied by
+//                                   postCard(); see its header for the one known divergence.
+//   .Params.tags                 -> card.tags: post.data.tags, in front matter order,
+//                                   lower-cased by the collection schema exactly as
+//                                   hugo.toml's `tags = [":lower"]` rule does.
+//   i18n "list_read_more"        -> card.action: t.list_read_more on a post,
+//                                   t.list_watch_video on a video.
+//
+// DECISIONS WORTH KNOWING
+//
+// The card is covered by an absolutely positioned anchor (`absolute inset-0 z-10`) that
+// carries the whole link, while the tag chips sit above it on `z-20` and stop the click from
+// propagating. That is the theme's own construction and it is reproduced as-is.
+//
+// The tag chip hrefs had NO trailing slash until the evening of 2026-09-19, because Hugo
+// builds them by hand as `{{ "/tags/" | relLangURL }}{{ . | urlize }}` and the live Hugo site
+// links to `/tags/hugo`, not `/tags/hugo/`. The owner reported it as broken: with
+// `trailingSlash: "always"` Astro's dev and preview servers answer such an address with 404
+// (GitHub Pages redirects it, so nobody saw it live). The chips now link to `/tags/hugo/`, the
+// address the page is built at; the same change was made to the chips of the tag route, its
+// "All Tags" link and the category label in ArticleLayout.astro. REVIEW-FIXES.md, section 5.
+//
+// PAGINATION - changed 2026-09-19, asked for by the owner. This used to read "NOT PORTED":
+// Hugo paginates at 10 posts and the site had two, so Hugo emitted no pagination markup and
+// there was nothing to match. The owner has since asked for pages of 5 posts with Previous
+// and Next links that move a whole page. What changed, and why:
+//
+//   .Paginator.HasPrev / .HasNext / .Prev.URL / .Next.URL
+//                                -> page.prevUrl / page.nextUrl, from paginateList() in
+//                                   lib/posts.ts, rendered by Pagination.astro since later
+//                                   on 2026-09-19: list.html's block, classes verbatim, with
+//                                   tag.html's SVG arrows in place of the text arrows.
+//   i18n "pagination_previous" / "pagination_next"
+//                                -> t.pagination_previous / t.pagination_next.
+//
+// - The prop is one page (`page`) instead of the whole list (`posts`), and the year groups are
+//   built from `page.items`. Hugo's list.html ranges over `.Pages`, which is every post in the
+//   section, not over `.Paginator.Pages`, the posts of the current page. So on the Hugo site
+//   every page of a paginated list would show all the posts, and only the Previous and Next
+//   links would change. That bug is not reproduced: here a page shows its own posts.
+// - Every page holds one year, so it has exactly one year badge: the Posts list and, since the
+//   evening of 2026-09-19, the category pages too are split by year (paginateByYear() in
+//   lib/posts.ts). For a few hours that day the category pages were paginated across years,
+//   and a year continuing from one page to the next got its badge again on the next page.
+// - The year switcher under the h1 is new, asked for by the owner; Hugo has nothing like it.
+//   Every route passes `years` and `currentYear` now, and the switcher renders only when there
+//   are at least two years. Each link goes to the first page of its year under the list's own
+//   address, and the year being shown is highlighted and carries aria-current. Its button
+//   classes are the pagination buttons' classes from list.html, and the highlighted state uses
+//   the year badge's colours, so it matches the theme in both colour schemes. Since later on
+//   2026-09-19 it is YearSwitcher.astro, which also decides which years to show when there are
+//   many, and ListByYear.astro places it and the page buttons around the list.
+// See PAGINATION.md.
+//
+// CARDS - changed 2026-09-22 (VIDEO-PAGE.md, section 4). This file was PostList.astro and
+// rendered posts. The Video list (/video/) renders through it as well now: the colleague's
+// VideoList.astro was a copy of this file with the card's link changed, and it missed every
+// fix the review brought here. The owner asked for posts and videos to stay apart, so the
+// component knows neither: it renders Cards (lib/lists.ts), plain data the routes build with
+// postCard() (lib/posts.ts) or videoCard() (lib/video.ts), and the only things that differ
+// between a post and a video on a card - the address and the last line, "Read more" or the
+// colleague's "Watch the video" - come inside the card. For a few hours that day the page held
+// `Post | Video` entries and this file chose by the entry's collection.
+import {
+  groupByYear,
+  // Added 2026-09-22: the chips under a card printed the front-matter word itself, which made
+  // them the one place on the site where a tag renamed in site.termLabels would still read the
+  // old way. The owner asked for them to follow the map like everything else.
+  termLabel,
+  type Card,
+  type ListPage,
+  type YearLink,
+} from "../lib/lists";
+import { formatMonthDay } from "../lib/date";
+import { urlize, encodeSlug } from "../lib/urlize";
+// Added later on 2026-09-19: the year switcher and the page buttons around the list, through
+// one component shared with the tag route; see its header.
+import ListByYear from "./ListByYear.astro";
+// Added 2026-10-12 with the two interface languages (src/i18n/lang.ts): the title of a section
+// (Posts, Video) is interface text, the title of a category is content; the date and the card's
+// last line come in both languages.
+import type { Words } from "../i18n/lang";
+import T from "./T.astro";
+// Added 2026-10-12 (T178): the lock label of a card is ui.locked_card.
+import { ui } from "../i18n/strings";
+
+interface Props {
+  /** Hugo's `.Title`: "Posts" for the section, the term title for one category. */
+  // Changed 2026-10-12: Words (it was string) - the section's name in both languages, a category's
+  // title as it is.
+  title: Words;
+  // Changed 2026-09-19: one page of the list instead of the whole list (`posts: Post[]`),
+  // for pagination; see the note at the top. Cards since 2026-09-22 (was ListPage<Post>); see
+  // CARDS above.
+  page: ListPage<Card>;
+  // Both required since the evening of 2026-09-19: every list is split by year, so every route
+  // passes them (they were optional while only /posts/ had the switcher).
+  /** Every year of the list, newest first, for the year switcher. */
+  years: YearLink[];
+  /** The year the page shows, highlighted in the year switcher; undefined on an empty list. */
+  currentYear: string | undefined;
+}
+
+const { title, page, years, currentYear } = Astro.props;
+const groups = groupByYear(page.items);
+---
+
+<div class="mx-auto max-w-4xl px-4 py-8">
+  {/* Changed 2026-10-12: through T (title is Words). */}
+  <h1 class="mb-8 text-center text-3xl font-bold text-gray-800">
+    <T s={title} />
+  </h1>
+
+  {
+    /* Added 2026-09-19: the year switcher above the list and the page buttons below it; see
+    the note at the top. First inline here, then YearSwitcher.astro and Pagination.astro, and
+    since the evening ListByYear.astro, which places both around the list the same way on
+    every list route. The switcher's label stays a literal because the theme's strings, ported
+    in full to src/i18n/strings.ts, have no key for it. */
+  }
+  <ListByYear page={page} years={years} currentYear={currentYear}>
+    <div class="space-y-16">
+      {
+        groups.map((group) => (
+          <div class="relative">
+            {/* Year indicator */}
+            <div class="mb-6 flex items-center">
+              <div class="year-indicator-badge flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-50 to-blue-100 text-xl font-bold text-blue-700 shadow-sm dark:from-slate-700/40 dark:to-slate-800/40 dark:text-blue-300">
+                {group.year}
+              </div>
+              <div class="ml-4 h-px flex-grow bg-gradient-to-r from-blue-200 to-transparent dark:from-slate-600" />
+            </div>
+
+            {/* Article list. The theme's `ml-8` became `sm:ml-8` on 2026-09-19 evening
+            (REVIEW-FIXES.md, section 9): the 2rem timeline indent under the year badge put the
+            cards 80px from the left edge of a phone and 48px from the right, which the reviewer
+            read as "shifted right". Below 640px the cards now span the column; from 640px up
+            the class is what it was, so nothing changes on a laptop. Hugo renders the indent at
+            every width. */}
+            <div class="space-y-6 sm:ml-8">
+              {group.items.map((card) => (
+                <div
+                  class="relative"
+                  data-locked={card.locked ? "" : undefined}
+                >
+                  {/* card.url since 2026-09-22, was `/posts/${post.slug}/`; see CARDS above. */}
+                  <a
+                    href={card.url}
+                    class="absolute inset-0 z-10"
+                    aria-label={card.title}
+                  />
+                  <div class="group overflow-hidden rounded-lg bg-white shadow-sm transition-shadow duration-300 hover:shadow-md dark:bg-slate-900">
+                    <div class="p-5">
+                      <div class="mb-3 flex flex-col justify-between sm:flex-row sm:items-baseline">
+                        <h3 class="text-xl font-medium text-gray-800 transition-colors group-hover:text-blue-600 dark:text-gray-100">
+                          {card.title}
+                        </h3>
+                        <time class="mt-1 flex flex-shrink-0 items-center text-sm text-gray-500 sm:ml-4 sm:mt-0 dark:text-gray-400">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="mr-1 h-4 w-4 text-gray-400"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                            />
+                          </svg>
+                          {/* Changed 2026-10-12: both languages (formatMonthDay returns a Phrase). */}
+                          <T s={formatMonthDay(card.date)} />
+                        </time>
+                      </div>
+
+                      {card.summary && (
+                        <div class="line-clamp-2 text-sm text-gray-600 dark:text-gray-300">
+                          {card.summary}
+                        </div>
+                      )}
+
+                      {card.tags.length > 0 && (
+                        <div class="relative z-20 mt-3 flex flex-wrap gap-2">
+                          {/* Changed 2026-09-19: the parameter was annotated `any`, which the
+                          house rules forbid and which nothing needed - the collection schema
+                          declares `tags` as string[], so `tag` is inferred as string, as in the
+                          tag route's copy of these chips. */}
+                          {card.tags.map((tag) => (
+                            <a
+                              href={`/tags/${encodeSlug(urlize(tag))}/`}
+                              class="tag-chip rounded bg-gray-100 px-2 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-slate-800 dark:text-gray-300 dark:hover:bg-slate-700"
+                              onclick="event.stopPropagation();"
+                            >
+                              {/* Changed 2026-09-22: the raw front-matter word until then, as
+                              Hugo prints it. It is termLabel() now, so the chip agrees with the
+                              tag cloud, the Tags page and the tag's own heading - and with the
+                              rename map behind all three. The side effect is visible and the
+                              owner asked for it knowing so: a chip reads "Биолокация" where it
+                              used to read "биолокация", on every list page. */}
+                              {termLabel(tag)}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+
+                      <div class="mt-4">
+                        <span class="inline-flex items-center text-sm text-blue-600 transition-transform duration-300 group-hover:translate-x-1">
+                          {/* card.action since 2026-09-22: "Read more" on a post, "Watch the
+                          video" on a video; see CARDS above. */}
+                          {/* Changed 2026-10-12 (T090): a card the viewer sees without its content says so in place
+                          of the call to read; the page behind it holds the introduction and the notice. Both
+                          languages (card.action is a Phrase); the lock label is ui.locked_card (T178). One comment,
+                          not two: every comment between the lines leaves a space in the markup, and the parity
+                          check (T180) compares it byte for byte. */}
+                          <T s={card.locked ? ui.locked_card : card.action} />
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="ml-1 h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M14 5l7 7m0 0l-7 7m7-7H3"
+                            />
+                          </svg>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </ListByYear>
+</div>

@@ -1,0 +1,98 @@
+---
+// Полная SEO-оптимизация страницы для поисковых систем (Google, Яндекс)
+// внутри страницы: title, meta name="description", canonical ссылки, теги для роботов, языковые теги
+// Обычно является «родителем» (главным компонентом) для мета-тегов
+
+import type { SiteConfig, PageLike } from "../lib/seo";
+
+import {
+  resolveSocialTitle,
+  resolveDescription,
+  resolveShareImage,
+  resolveLocale,
+  toIso,
+} from "../lib/seo";
+
+interface Props {
+  site: SiteConfig;
+  page: PageLike;
+  // Merged 2026-09-17: the optional title and ogImage props, declared on 2026-09-16 only to be
+  // passed on to SocialMeta.astro, are gone. my-saved-work deleted SocialMeta.astro and stopped
+  // reading both props here; the title element lives in Head.astro alone.
+}
+
+const { site, page } = Astro.props;
+
+const socialTitle = resolveSocialTitle(page, site);
+const description = resolveDescription(page, site);
+const shareImage = resolveShareImage(page, site);
+
+const canonicalURL = page.permalink || site.baseUrl;
+// Changed 2026-09-22: a video page says `video.other`, the Open Graph type for a video that is
+// not a movie, an episode or a TV show. Until then every page fell through to "website",
+// because nothing set `isPage` either - see the note in ArticleLayout.astro on the props it now
+// passes to Base.astro. `article` still covers the posts, and everything that is neither, the
+// lists and the home page, stays "website".
+const ogType = page.isVideo
+  ? "video.other"
+  : page.isPage
+    ? "article"
+    : "website";
+const locale = resolveLocale(site);
+
+const publishedTime = toIso(page.publishDate);
+const modifiedTime = toIso(page.updatedDate);
+const tags = page.tags ?? [];
+---
+
+<link rel="canonical" href={canonicalURL} />
+<meta name="description" content={description} />
+
+<meta property="og:site_name" content={site.title} />
+<meta property="og:type" content={ogType} />
+<meta property="og:title" content={socialTitle} />
+<meta property="og:description" content={description} />
+<meta property="og:url" content={canonicalURL} />
+<meta property="og:locale" content={locale} />
+{shareImage && <meta property="og:image" content={shareImage} />}
+
+<meta
+  name="twitter:card"
+  content={shareImage ? "summary_large_image" : "summary"}
+/>
+<meta name="twitter:title" content={socialTitle} />
+<meta name="twitter:description" content={description} />
+{shareImage && <meta name="twitter:image" content={shareImage} />}
+
+{
+  /* Changed 2026-09-22, when these tags started being emitted at all: their namespace follows
+  og:type. Open Graph defines `article:*` for the article type and `video:*` for the video types,
+  so a page that calls itself `video.other` and then lists `article:tag` is describing itself with
+  properties its own type does not have. A post is unaffected - it is still `article:*`.
+
+  `video:release_date` is the video type's equivalent of `article:published_time`. There is no
+  video equivalent of `article:modified_time`, so the modified date is emitted for posts only; a
+  video that gets edited has its date in the page itself either way. */
+}
+{
+  page.isPage && publishedTime && (
+    <meta
+      property={page.isVideo ? "video:release_date" : "article:published_time"}
+      content={publishedTime}
+    />
+  )
+}
+{
+  page.isPage && !page.isVideo && modifiedTime && (
+    <meta property="article:modified_time" content={modifiedTime} />
+  )
+}
+{
+  page.isPage &&
+    tags.map((tag) => (
+      <meta
+        property={page.isVideo ? "video:tag" : "article:tag"}
+        content={tag}
+      />
+    ))
+}

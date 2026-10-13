@@ -1,0 +1,397 @@
+---
+// The table-of-contents sidebar of an article: the list beside the card on a wide window, the
+// highlight that follows the reader down the page, and the smooth scroll a click on an entry does.
+// Rendered by ArticleLayout.astro for posts and videos alike.
+//
+// Moved here on 2026-09-22, out of ArticleLayout.astro, which was 707 lines of which this was
+// close to half: the markup, a 100-line style block and a 150-line script, none of which the rest
+// of the article frame reads. Nothing about it changed in the move - the same entries, the same
+// class names, the same behaviour - and the notes that described it came with it, below.
+//
+// One thing the move had to respect: the <aside> is positioned with `absolute inset-y-0 left-full`
+// against the `relative` wrapper that ArticleLayout.astro puts around the article card. The
+// component renders where the tag stands, inside that wrapper, so the positioning context is the
+// one it always had.
+//
+// The script here drives both tables of contents, not just this one: the click handler binds to
+// "#TableOfContents-side a, #TableOfContents a", the second of which is the collapsible list in
+// TableOfContents.astro. That was true before the move as well.
+//
+//
+// The table-of-contents sidebar added in d0dbbd1 works the way the sidebar in the newer
+// hugo-theme-void does - the reference the owner pointed to is
+// https://www.daucloud.com/posts/fat-loss-diet-review/, built with that theme. Its entries are the
+// post's headings: src/pages/posts/[slug].astro takes them from post.render() and passes them in
+// as the headings prop, so the sidebar appears on every post that has "##" or "###" headings.
+//
+// What it does, and why:
+//
+//   - It sits to the right of the article card, 1.5rem (ml-6) from it, 14rem (w-56) wide, from a
+//     92rem (1472px) wide window up. All three numbers are the reference theme's own. main in
+//     Base.astro is max-w-4xl and the card fills it, so a column inside main would have squeezed
+//     the text; the sidebar is positioned absolutely at left-full of a relative wrapper instead,
+//     which puts it in the page margin and leaves the card exactly where and how wide it was.
+//     Below 92rem it is hidden, and the collapsible table of contents at the top of the article
+//     covers those widths. Above it, that collapsible one hides (TableOfContents.astro), so the
+//     page never shows two lists of the same headings - the reference does the same.
+//   - It stays in view while the page scrolls: position: sticky with top-24 (6rem, 96px). The
+//     site header is position: fixed and ends 68px down the page, measured, so the list has to
+//     start below that; 96px is also where the article card starts, so before scrolling the list
+//     lines up with the card. sticky works only while no ancestor clips its overflow, and main is
+//     overflow-visible from sm up.
+//   - The pinned part is capped at the window height minus 7rem (the 96px offset plus 16px at the
+//     bottom) and scrolls on its own when it is taller, so a long list stays reachable.
+//   - Subsections are nested under their section, with a thin line on their left, instead of
+//     one flat list with an indent: sidebarEntries below builds that tree.
+//   - The entry of the section being read is highlighted while scrolling (the script at the end of
+//     this file), and the highlighted entry is kept visible inside the capped list.
+//   - A click on an entry scrolls smoothly to its heading and highlights the heading in the
+//     reference theme's style, with the anchor-highlight class main.css already has; the same
+//     script handles it, for this sidebar and for the collapsible table of contents alike.
+//   - Colours, spacing and hover come from the reference theme's stylesheet, in the style block
+//     below, with its light and dark values. text-fg-faint, which the colleague's markup carried
+//     from that theme, does not exist in this project's Tailwind config; the title gets the same
+//     colour from the style block instead.
+//
+// The colleague's markup, kept for comparison:
+//
+//   <aside class="toc-sidebar hidden w-64 lg:block" aria-label="Table of Contents">
+//     <div class="toc-sidebar-title text-fg-faint mb-2 text-xs font-semibold uppercase tracking-wide">
+//     <nav id="TableOfContents-side" class="toc-nav text-sm"><ul class="space-y-2">
+//       <li class={`depth-${heading.depth} ${heading.depth > 2 ? "pl-4" : ""}`}>
+//         <a href={`#${heading.slug}`} class="text-gray-600 transition-colors hover:text-gray-900">
+//
+// The depth classes and the pl-4 indent are gone because the nesting now carries the depth. The
+// template literal had a second problem as well: prettier-plugin-tailwindcss reads a class
+// template literal as a class list and can eat the space inside it (see CLAUDE.md).
+import type { MarkdownHeading } from "astro";
+// Added 2026-10-12 with the two interface languages (src/i18n/lang.ts): the title and the label
+// below read the theme's table_of_contents string, in both languages; both were English literals.
+import { ui } from "../i18n/strings";
+import { langAttrs } from "../i18n/lang";
+import T from "./T.astro";
+
+interface Props {
+  /** The article's headings, as render() returns them. */
+  headings: MarkdownHeading[];
+}
+
+const { headings } = Astro.props;
+
+// One entry per top-level heading of the post, with the deeper headings after it as its children.
+// The top level is the shallowest heading the post uses, normally "##"; a post that starts at
+// "###" still gets a flat list rather than an empty first level.
+type SidebarEntry = { heading: MarkdownHeading; children: MarkdownHeading[] };
+
+const topDepth = Math.min(...headings.map((heading) => heading.depth));
+const sidebarEntries: SidebarEntry[] = [];
+for (const heading of headings) {
+  const parent = sidebarEntries.at(-1);
+  if (parent && heading.depth > topDepth) parent.children.push(heading);
+  else sidebarEntries.push({ heading, children: [] });
+}
+---
+
+{
+  /* (English, added 2026-09-22 next to the original heading: the dynamic table of contents,
+      the sidebar.)
+      Динамическое оглавление (Sidebar)
+
+    Changed 2026-09-18: the note above was an HTML comment, which is sent to every visitor with
+    the page. It is an Astro comment now, so it stays in the source and out of the output. */
+}
+{
+  sidebarEntries.length > 0 && (
+    <aside
+      class="toc-sidebar absolute inset-y-0 left-full ml-6 w-56"
+      {...langAttrs({ "aria-label": ui.table_of_contents })}
+    >
+      <div class="toc-sidebar-scroll sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto pr-1">
+        <div class="toc-sidebar-title mb-2 text-xs font-semibold uppercase tracking-wide">
+          {/* Changed 2026-10-12: both languages (it read "Table of Contents"). */}
+          <T s={ui.table_of_contents} />
+        </div>
+        <nav id="TableOfContents-side" class="toc-nav">
+          <ul>
+            {sidebarEntries.map(({ heading, children }) => (
+              <li>
+                <a href={`#${heading.slug}`}>{heading.text}</a>
+                {children.length > 0 && (
+                  <ul>
+                    {children.map((child) => (
+                      <li>
+                        <a href={`#${child.slug}`}>{child.text}</a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </div>
+    </aside>
+  )
+}
+
+<style>
+  /* Added 2026-09-18. Values from the stylesheet of the newer hugo-theme-void, the reference for
+  this sidebar: its --fg, --fg-muted, --fg-faint, --accent-soft, --accent-strong and --line
+  variables, light and dark. They are scoped to the sidebar under their own names, because this
+  project does not define those variables. */
+  /* Changed 2026-09-30, from a Tailwind 3.4 audit the owner ordered: the values are theme() calls
+  now, where they were hex literals. Those literals are Tailwind 3's default palette, and
+  tailwind.config.cjs pins the blues, the greys and the slates to the values of the Hugo build
+  (Tailwind 4), so the sidebar was a shade off the rest of the site - its blue-700 was #1d4ed8
+  against the site's #1447e6. Each literal became the colour of the same name
+  (Functions & Directives, theme(), which also documents the "/ 18%" opacity); the unpinned ones
+  resolve to exactly the value they replace. */
+  .toc-sidebar {
+    --toc-fg: theme(colors.gray.800);
+    --toc-fg-muted: theme(colors.gray.600);
+    --toc-fg-faint: theme(colors.gray.500);
+    --toc-accent-soft: theme(colors.blue.50);
+    --toc-accent-strong: theme(colors.blue.700);
+    --toc-line: theme(colors.gray.200);
+  }
+
+  :global(html.dark) .toc-sidebar {
+    --toc-fg: theme(colors.gray.200);
+    --toc-fg-muted: theme(colors.slate.300);
+    --toc-fg-faint: theme(colors.slate.400);
+    --toc-accent-soft: theme(colors.blue.500 / 18%);
+    --toc-accent-strong: theme(colors.blue.200);
+    --toc-line: theme(colors.slate.700);
+  }
+
+  /* Shown only from a 92rem (1472px) wide window up, the reference theme's breakpoint. It is a
+  media query here rather than a Tailwind class because this project's Tailwind 3 does not
+  generate an arbitrary min-width variant in rem: measured, a build with that class produced no
+  rule for it at all, so the sidebar stayed hidden at every width. Tailwind 3 accepts arbitrary
+  min-width and max-width variants only in the unit of the configured screens, which are in px,
+  and says so in the build output. The class is deliberately not spelled out in this comment:
+  Tailwind reads comments too, and the spelled-out class made every build print that warning. */
+  .toc-sidebar {
+    display: none;
+  }
+
+  @media (min-width: 92rem) {
+    .toc-sidebar {
+      display: block;
+    }
+  }
+
+  .toc-sidebar-scroll {
+    scrollbar-width: thin;
+  }
+
+  .toc-sidebar-title {
+    color: var(--toc-fg-faint);
+  }
+
+  .toc-nav {
+    font-size: 0.85rem;
+  }
+
+  .toc-nav ul {
+    margin: 0;
+    padding-left: 0;
+    list-style: none;
+  }
+
+  .toc-nav > ul > li + li {
+    margin-top: 0.35rem;
+  }
+
+  .toc-nav a {
+    display: block;
+    padding: 0.3rem 0.5rem;
+    border-radius: 0.375rem;
+    color: var(--toc-fg-muted);
+    text-decoration: none;
+    transition:
+      background-color 0.15s,
+      color 0.15s;
+  }
+
+  .toc-nav a:hover {
+    background-color: var(--toc-accent-soft);
+    color: var(--toc-fg);
+  }
+
+  /* The entry of the section being read; set by the script below. */
+  .toc-nav a.toc-active {
+    background-color: var(--toc-accent-soft);
+    color: var(--toc-accent-strong);
+  }
+
+  .toc-nav a:focus-visible {
+    outline: 2px solid theme(colors.blue.300);
+    outline-offset: 2px;
+  }
+
+  /* Subsections: nested under their section, with a thin line on their left. */
+  .toc-nav ul ul {
+    margin-top: 0.15rem;
+    margin-left: 0.5rem;
+    padding-left: 0.75rem;
+    border-left: 1.5px solid var(--toc-line);
+  }
+
+  .toc-nav ul ul a {
+    padding-left: 0.25rem;
+    font-size: 0.92em;
+  }
+</style>
+
+<script>
+  // Added 2026-09-18: the two behaviours of the reference theme's table of contents, as its
+  // main.js implements them.
+  //
+  // 1. While the page scrolls, the sidebar entry of the section being read carries the toc-active
+  //    class. Throttled to one run per frame, the current section is the last heading that has
+  //    already reached its anchor position; before any heading is reached, it is the first one.
+  //    "Reached" means the heading is at or above the place an anchor jump puts it: its own
+  //    scroll-margin-top, 6.5rem (104px) from main.css, plus 8px of tolerance. Measuring against
+  //    that value rather than a fixed number keeps the highlight in step with a click on an entry.
+  //
+  // 2. A click on an entry of either table of contents - this sidebar or the collapsible one in
+  //    TableOfContents.astro - scrolls smoothly to the heading and marks it with the
+  //    anchor-highlight class. That class is already in main.css, ported from the theme, which
+  //    describes it as the "anchor highlight for in-page navigation (TOC, hash links)": an amber
+  //    background and outline, with its own dark variant, the same values the reference uses. The
+  //    clicked entry stays the active one in the sidebar until the reader does something else, so
+  //    the list does not flicker through the sections the smooth scroll passes. The highlight and
+  //    that hold end on the next key press, pointer press or touch, or on scrolling once 1.5s have
+  //    passed; the delay keeps the smooth scroll itself from ending them at once. The address bar
+  //    gets the heading's hash, as a plain anchor link would give it.
+  const sidebarNav = document.getElementById("TableOfContents-side");
+
+  // The id an in-page link points to. Headings with Cyrillic text have Cyrillic ids; the href
+  // normally carries them as they are, but an encoded one is decoded too.
+  const idFromHref = (link: HTMLAnchorElement): string => {
+    const raw = (link.getAttribute("href") ?? "").slice(1);
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  };
+
+  if (sidebarNav) {
+    const entries = Array.from(sidebarNav.querySelectorAll("a")).flatMap(
+      (link) => {
+        const target = document.getElementById(idFromHref(link));
+        if (!target) return [];
+        const reachedAt =
+          parseFloat(getComputedStyle(target).scrollMarginTop) + 8;
+        return [{ link, target, reachedAt }];
+      },
+    );
+    const scroller = sidebarNav.closest(".toc-sidebar-scroll");
+    let active: HTMLAnchorElement | undefined;
+    let pinned: HTMLAnchorElement | undefined;
+    let highlighted: HTMLElement | undefined;
+    let armScrollTimer: number | undefined;
+
+    const setActive = (link: HTMLAnchorElement | undefined) => {
+      if (!link || link === active) return;
+      active?.classList.remove("toc-active");
+      link.classList.add("toc-active");
+      active = link;
+
+      // A long list scrolls inside its capped box; keep the active entry visible in it.
+      if (scroller) {
+        const entryBox = link.getBoundingClientRect();
+        const listBox = scroller.getBoundingClientRect();
+        if (entryBox.top < listBox.top || entryBox.bottom > listBox.bottom) {
+          link.scrollIntoView({ block: "nearest" });
+        }
+      }
+    };
+
+    const update = () => {
+      if (pinned) {
+        setActive(pinned);
+        return;
+      }
+      let current = entries[0];
+      for (const entry of entries) {
+        if (entry.target.getBoundingClientRect().top <= entry.reachedAt)
+          current = entry;
+        else break;
+      }
+      setActive(current?.link);
+    };
+
+    // Ends the highlight of a clicked heading, and the hold on its sidebar entry.
+    const release = () => {
+      window.clearTimeout(armScrollTimer);
+      window.removeEventListener("keydown", release);
+      window.removeEventListener("pointerdown", release);
+      window.removeEventListener("touchstart", release);
+      window.removeEventListener("scroll", release);
+      highlighted?.classList.remove("anchor-highlight");
+      highlighted = undefined;
+      pinned = undefined;
+      update();
+    };
+
+    const onEntryClick = (event: MouseEvent) => {
+      const link = event.currentTarget;
+      if (!(link instanceof HTMLAnchorElement)) return;
+      const target = document.getElementById(idFromHref(link));
+      if (!target) return;
+      event.preventDefault();
+      history.pushState(null, "", link.getAttribute("href"));
+
+      release();
+      target.classList.add("anchor-highlight");
+      highlighted = target;
+      pinned = entries.find((entry) => entry.target === target)?.link;
+      update();
+
+      const reduceMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+      target.scrollIntoView({
+        behavior: reduceMotion ? "auto" : "smooth",
+        block: "start",
+      });
+
+      window.addEventListener("keydown", release, { once: true });
+      window.addEventListener("pointerdown", release, { once: true });
+      window.addEventListener("touchstart", release, {
+        once: true,
+        passive: true,
+      });
+      armScrollTimer = window.setTimeout(() => {
+        window.addEventListener("scroll", release, {
+          once: true,
+          passive: true,
+        });
+      }, 1500);
+    };
+
+    document
+      .querySelectorAll<HTMLAnchorElement>(
+        "#TableOfContents-side a, #TableOfContents a",
+      )
+      .forEach((link) => link.addEventListener("click", onEntryClick));
+
+    let queued = false;
+    window.addEventListener(
+      "scroll",
+      () => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => {
+          update();
+          queued = false;
+        });
+      },
+      { passive: true },
+    );
+    update();
+  }
+</script>

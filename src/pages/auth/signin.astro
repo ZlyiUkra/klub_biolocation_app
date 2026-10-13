@@ -1,0 +1,199 @@
+---
+// /auth/signin/ - sign-in, with the club's own accounts (T053 of specs/001-self-hosted-club-site; FR-012, FR-015).
+//
+// Rewritten on 2026-10-11 for the move off the previous sign-in provider: the page is a plain form that posts to
+// `POST /api/auth/signin` (server/src/auth/routes.ts) and goes where the server says. The provider's component, its
+// stylesheet and its scripts are no longer used here; their files are removed in T054.
+//
+// What the page does and does not decide:
+// - `next` is read from the address bar and sent as typed. The server resolves it and answers `redirect`
+//   (server/src/auth/next-path.ts is the one home of that rule), so the page can never be an open redirect.
+// - A refusal is one sentence for every cause (unknown name, wrong password, expired temporary password): the page
+//   cannot tell them apart, because the server does not. From the third failure on it adds the tries left, and when a
+//   pause starts it counts it down on the form (the owner's request of 2026-10-11).
+// - "Помощь" opens the site's feedback form with the subject "Проблема со входом" (T144), through the same event the
+//   previous page used (site.contact.openEvent).
+// - The page needs scripts, like the account page; without them there is a note, as there was before.
+import Base from "../../layouts/Base.astro";
+import AuthField from "../../components/AuthField.astro";
+// Changed 2026-10-12 (T178) with the two interface languages (src/i18n/lang.ts): every word of the page is in the
+// dictionary (src/i18n/strings.ts) and printed through T, so a switch of language changes it in place.
+import { ui } from "../../i18n/strings";
+import T from "../../components/T.astro";
+import { site } from "../../config";
+
+// Removed 2026-10-11 (T052): the `prerender = true` line that stood here is gone. A prerendered file is the same for
+// every visitor, so the header could not know who was looking; the page is rendered per request now, and the header is
+// right from the first byte (T142).
+---
+
+<Base title={ui.signin_title}>
+  <section class="mx-auto max-w-md">
+    <h1 class="mb-6 text-2xl font-bold"><T s={ui.signin_title} /></h1>
+    <form id="signin-form" class="space-y-4" novalidate>
+      <AuthField
+        id="signin-identifier"
+        name="identifier"
+        label={ui.form_identifier}
+        autocomplete="username"
+        required
+      />
+      <AuthField
+        id="signin-password"
+        name="password"
+        label={ui.form_password}
+        type="password"
+        autocomplete="current-password"
+        required
+        toggle
+      />
+      <p
+        id="signin-message"
+        class="hidden rounded bg-gray-100 p-3 text-sm dark:bg-slate-800"
+        role="alert"
+      >
+      </p>
+      <button
+        id="signin-submit"
+        type="submit"
+        class="w-full rounded bg-blue-600 px-4 py-2 text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+      >
+                <T s={ui.signin_submit} />
+      </button>
+    </form>
+    <p class="mt-6 text-sm text-gray-600 dark:text-slate-400">
+      <T s={ui.signin_no_account} />
+      <a
+        href={site.auth.signUp}
+        class="text-blue-600 hover:underline dark:text-blue-400"
+        ><T s={ui.signin_register} /></a
+      >
+      ·
+      {
+        /* Added 2026-10-11 (T168, step 3c): the way back for the superuser who lost the password, by a recovery code. */
+      }
+      <a
+        href={site.auth.recover}
+        class="text-blue-600 hover:underline dark:text-blue-400"
+        ><T s={ui.signin_recover} /></a
+      >
+      ·
+      <button
+        id="signin-help"
+        type="button"
+        class="text-blue-600 hover:underline dark:text-blue-400"
+      >
+                <T s={ui.signin_help} />
+      </button>
+    </p>
+    <noscript>
+      <p class="mt-4 text-sm"><T s={ui.signin_noscript} /></p>
+    </noscript>
+  </section>
+</Base>
+
+<script>
+  // Top level of the template, never inside an expression (CLAUDE.md, measured 2026-09-22).
+  import {
+        attemptsLeftNote,
+    bindPasswordToggles,
+    joinPhrases,
+    commonRefusal,
+    messageArea,
+    sendJson,
+    waitLead,
+  } from "../../scripts/auth-forms";
+    import { site } from "../../config";
+  import { ui } from "../../i18n/strings";
+
+  const form = document.getElementById("signin-form");
+  const submit = document.getElementById("signin-submit");
+  const area = document.getElementById("signin-message");
+  const identifier = document.getElementById("signin-identifier");
+  const password = document.getElementById("signin-password");
+  const help = document.getElementById("signin-help");
+
+  bindPasswordToggles();
+
+  if (
+    form instanceof HTMLFormElement &&
+    submit instanceof HTMLButtonElement &&
+    area instanceof HTMLElement &&
+    identifier instanceof HTMLInputElement &&
+    password instanceof HTMLInputElement
+  ) {
+    const message = messageArea(area);
+    // Added 2026-10-11 (T053): the pause is shown as a countdown and the button is off until it ends; the server
+    // refuses an early attempt anyway, so this is only so that nobody has to guess when to try again.
+    const pause = (seconds: number) => {
+      submit.disabled = true;
+      message.countdown(seconds, waitLead, () => {
+        submit.disabled = false;
+        password.focus();
+      });
+    };
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (identifier.value.trim() === "" || password.value === "") {
+        message.show(ui.signin_missing);
+        return;
+      }
+      submit.disabled = true;
+      message.clear();
+      const answer = await sendJson("POST", "/api/auth/signin", {
+        identifier: identifier.value,
+        password: password.value,
+        next: new URLSearchParams(location.search).get("next") ?? undefined,
+      });
+
+      if (
+        answer.status === 200 &&
+        typeof answer.body["redirect"] === "string"
+      ) {
+        // replace, not assignment, so the sign-in page does not stay in the history behind where the visitor goes.
+        location.replace(answer.body["redirect"]);
+        return;
+      }
+      password.value = "";
+      if (answer.status === 429) {
+        pause(answer.retryAfter || 60);
+        return;
+      }
+      const common = commonRefusal(answer);
+      if (common !== null) {
+        message.show(common);
+        submit.disabled = false;
+        return;
+      }
+      // 401: the one sentence, then the tries left, then (if this failure earned a pause) the countdown.
+      const wait = answer.body["retryAfterSeconds"];
+      if (typeof wait === "number" && wait > 0) {
+        pause(wait);
+        return;
+      }
+            message.show(
+        joinPhrases(
+          ui.signin_refused,
+          attemptsLeftNote(answer.body["attemptsLeft"]),
+        ),
+      );
+      submit.disabled = false;
+      password.focus();
+    });
+  }
+
+  // "Помощь": the feedback form with the subject of the problem and, when the visitor already typed an address, it.
+  help?.addEventListener("click", () => {
+    const typed =
+      identifier instanceof HTMLInputElement ? identifier.value.trim() : "";
+    document.dispatchEvent(
+      new CustomEvent(site.contact.openEvent, {
+        detail: {
+          email: typed.includes("@") ? typed : "",
+          subject: site.contact.signInSubject,
+        },
+      }),
+    );
+  });
+</script>

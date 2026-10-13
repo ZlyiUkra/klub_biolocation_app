@@ -1,0 +1,15 @@
+# Line endings: always LF in the repository and in the working tree,
+# regardless of core.autocrlf on a given machine.
+* text=auto eol=lf
+
+# Never normalize binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.avif binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.db binary

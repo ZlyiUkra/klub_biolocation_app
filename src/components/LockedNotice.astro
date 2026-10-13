@@ -1,0 +1,66 @@
+---
+// The notice of a locked entry (T090 of specs/001-self-hosted-club-site; FR-008 to FR-010, user story 2 scenario 3).
+//
+// What a viewer who sees only the card of an entry reads under its introduction: that the rest is locked and what to do
+// about it. It states the situation and never the rule: it does not say which statuses or which people the entry is
+// for, because that would tell a stranger who the entry is shared with (FR-010).
+//
+// Two wordings, by who is looking: a visitor with no session is offered the sign-in page and brought back here after
+// it; a signed-in account that the audience does not include is told so, with no button, because signing in again
+// would change nothing. The wording is the site's own language, like the player's placeholders in VideoPlayer.astro.
+import { site } from "../config";
+// Added 2026-10-12 (T178): the wording is in both languages (src/i18n/strings.ts), printed through T.
+import { ui } from "../i18n/strings";
+import T from "./T.astro";
+
+
+interface Props {
+  /** The address of the page, so that the sign-in page can return the visitor to it. */
+  href: string;
+}
+
+const { href } = Astro.props;
+const signedIn = Astro.locals.viewer.userId !== null;
+const signIn = site.auth.signIn + "?next=" + encodeURIComponent(href);
+---
+
+<div
+  class="locked-notice rounded-lg border border-gray-200 bg-gray-50 p-5 text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200"
+  data-locked-notice
+>
+  <p class="mb-3 flex items-center font-medium">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      class="mr-2 h-5 w-5 flex-shrink-0"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      aria-hidden="true"
+    >
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4"
+      ></path>
+    </svg>
+        <T s={ui.locked_rest} />
+  </p>
+  {
+    signedIn ? (
+      <p><T s={ui.locked_not_for_you} /></p>
+    ) : (
+      <>
+        <p class="mb-3">
+                    <T s={ui.locked_members} />
+        </p>
+        <a
+          href={signIn}
+          class="inline-block rounded bg-blue-600 px-4 py-2 text-white transition-opacity hover:opacity-90"
+        >
+                    <T s={ui.signin_submit} />
+        </a>
+      </>
+    )
+  }
+</div>

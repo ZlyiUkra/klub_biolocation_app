@@ -1,0 +1,56 @@
+---
+// One category, e.g. /categories/blog/. Hugo has no category-specific template, so it falls
+// back to ../klub_biolocation/themes/void/layouts/_default/list.html - the same one /posts/
+// uses, which is why this route renders CardList.astro with a different title.
+// MIGRATION-PLAN.md §4.1.
+//
+// Nothing links here: the Categories page is an accordion that expands in place and links
+// straight to the posts. These pages exist only because Hugo generates them, and they are
+// kept for URL parity.
+//
+// Changed 2026-09-19, asked for by the owner: the list is paginated, like /posts/. This file
+// was src/pages/categories/[slug].astro. As a rest-parameter route it renders page 1 at
+// /categories/<slug>/ and page n at /categories/<slug>/page/<n>/, Hugo's shape. The page
+// links are built from the encoded slug, like every other hand-built link to a term page
+// (see encodeSlug in lib/urlize.ts).
+//
+// Changed later on 2026-09-19, asked for by the owner: the list is split by year like /posts/,
+// through the same paginateByYear() - /categories/<slug>/ is the newest year's first page,
+// /categories/<slug>/<year>/ a year, /categories/<slug>/<year>/page/<n>/ a further page of
+// it - and gets the year switcher, which until then was on /posts/ only. See PAGINATION.md.
+import Base from "../../../layouts/Base.astro";
+// Changed 2026-09-22 (VIDEO-PAGE.md, section 4): the list component is CardList.astro (it was
+// PostList.astro) and renders Cards, plain data this route builds with postCard(); the split by
+// year comes from lib/lists.ts, shared with the Video list.
+import CardList from "../../../components/CardList.astro";
+// Changed 2026-09-22: the terms come from lib/terms.ts, which collects them over the posts
+// and the videos, instead of from lib/posts.ts, which saw the posts only. A term now holds
+// cards rather than posts, so this route no longer maps anything - the entries arrive flat
+// and the video lectures appear beside the articles. REVIEW-VIDEO.md, remarks 2 and 3.
+// Changed 2026-10-10 (T162): the backend cuts the list by year and by page; this route asks for the one page its
+// address names (getListRoute() in lib/terms.ts) and no longer receives every card to cut itself.
+import { getListRoute, getTermBySlug } from "../../../lib/terms";
+import { encodeSlug } from "../../../lib/urlize";
+
+// Changed 2026-10-10 (T034): rendered on demand, as the tag pages are.
+const context = { cookie: Astro.request.headers.get("cookie") ?? undefined };
+const term = await getTermBySlug("categories", Astro.params.slug, context);
+const entry =
+  term === undefined
+    ? undefined
+    : await getListRoute(
+        { category: term.name },
+        `/categories/${encodeSlug(term.slug)}/`,
+        Astro.params.page,
+        context,
+      );
+if (term === undefined || entry === undefined) return Astro.rewrite("/404");
+const { page, years, year } = entry;
+
+// Changed 2026-10-10 (T034 of specs/001-self-hosted-club-site): the `prerender = true` line that T032 put here is gone.
+// Rendered on demand from the backend, one request each.
+---
+
+<Base title={term.title}>
+  <CardList title={term.title} page={page} years={years} currentYear={year} />
+</Base>

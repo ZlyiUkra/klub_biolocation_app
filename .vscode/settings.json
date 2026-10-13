@@ -1,0 +1,41 @@
+{
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "files.eol": "\n",
+
+  // Added 2026-09-18: use the TypeScript in node_modules, which is the one astro check runs, instead
+  // of whatever VS Code ships or an extension substitutes. The Astro extension carries no TypeScript
+  // of its own - it asks the editor for one - so the version chosen here is what type-checks .astro
+  // files. A different version reports different diagnostics on the same file, which is why one
+  // machine underlined a script block that another showed as clean.
+  //
+  // This setting only decides which TypeScript is used. An extension that replaces the editor's
+  // TypeScript outright still has to be switched off by hand, per workspace, in the Extensions panel;
+  // .vscode/extensions.json names the two that do it.
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+
+  "prettier.requireConfig": true,
+
+  "html.format.enable": false,
+  "css.format.enable": false,
+
+  "[astro]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
+}

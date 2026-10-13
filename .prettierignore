@@ -1,0 +1,19 @@
+# Generated
+/dist
+/.astro
+package-lock.json
+
+# Static assets: nothing to format
+/public
+
+# Reference output copied from the Hugo build (see MIGRATION-PLAN.md, Phase 0)
+/reference
+
+# Added 2026-10-10 (owner's request): files generated and maintained by spec-kit and its skills are not formatted
+# by this project's Prettier; `npm run check` flagged them at HEAD and `npm run fix` rewrote them.
+/.specify
+/.claude/skills/speckit-*
+
+# Added 2026-10-10 (T018): captured output of the static build, compared byte for byte by server/test/render.test.ts;
+# formatting it would change what it is the reference of.
+/server/test/fixtures

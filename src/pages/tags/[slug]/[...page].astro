@@ -1,0 +1,276 @@
+---
+// One tag, e.g. /tags/hugo/. Port of
+// ../klub_biolocation/themes/void/layouts/taxonomy/tag.html (MIGRATION-PLAN.md §4.1).
+// Class attributes are copied verbatim, with one exception: the pagination block at the foot is
+// the shared components/Pagination.astro, with list.html's buttons - see PAGINATION, below.
+//
+// This looks like CardList.astro but is deliberately NOT it: tag.html has its own year badge
+// (with a decorative halo and a thicker rule), a date cell without the calendar icon, a
+// summary without `line-clamp-2`, pill-shaped tag chips that highlight the current tag, and
+// two navigation links at the foot. Sharing a component would mean parameterising all of
+// that, so the theme's second copy is kept as a second copy.
+//
+// HOW THE GO TEMPLATE MAPS ONTO THIS FILE
+//
+//   .Title                     -> term.title, title-cased by lib/titleize.ts.
+//   len .Pages                 -> term.posts.length.
+//   i18n "articles"            -> t.articles.
+//   .Pages.GroupByDate "2006"  -> groupByYear(); `.Key` is group.year.
+//   $isCurrentTag              -> `tag === term.name`. Hugo compares the raw front matter
+//                                 value against `$.Title`, which for a term page is the
+//                                 title-cased label - and since the tags are lower-case,
+//                                 that comparison is FALSE for every chip on the live site.
+//                                 See the note at the chip below.
+//   i18n "all_tags"            -> t.all_tags; the link is Hugo's `{{ "tags" | relURL }}`,
+//                                 which resolves to "/tags" without a trailing slash. Since
+//                                 the evening of 2026-09-19 it is "/tags/": the slash-less
+//                                 address is a 404 on Astro's dev and preview servers, the
+//                                 owner reported it, and the tag chips below got their slash
+//                                 with it. See the note in CardList.astro.
+//
+// PAGINATION - changed 2026-09-19, asked for by the owner. This used to read "NOT PORTED",
+// for the same reason as in CardList.astro: Hugo emitted nothing for it until a tag had more
+// than ten posts. The owner has since asked for pages of 5 posts:
+//
+//   .Paginator.HasPrev / .HasNext / .Prev.URL / .Next.URL
+//                              -> page.prevUrl / page.nextUrl, from paginateList() in
+//                                 lib/posts.ts, rendered before the navigation links by
+//                                 components/Pagination.astro since later on 2026-09-19,
+//                                 with list.html's buttons and tag.html's arrows (see the
+//                                 note at the block).
+//
+// - This file was src/pages/tags/[slug].astro. As a rest-parameter route it renders, since the
+//   evening of 2026-09-19 when the owner asked for every list to be split by year like /posts/:
+//   /tags/<slug>/ (the newest year's first page), /tags/<slug>/<year>/ and
+//   /tags/<slug>/<year>/page/<n>/, from paginateByYear() in lib/posts.ts, with the links built
+//   from the encoded slug like every other hand-built link to a tag. For a few hours that day
+//   it was /tags/<slug>/page/<n>/ across all years.
+// - The year groups are built from `page.items`, the posts of this page - one year now.
+//   tag.html ranges over `.Pages`, every post with the tag, so on the Hugo site every page
+//   would repeat the whole list; see the same note in CardList.astro. The count under the
+//   title stays the total across years.
+// - The year switcher and the page buttons come from ListByYear.astro, the same as on /posts/;
+//   the pagination block that stood here before it (tag.html's, with list.html's buttons since
+//   the reviewer's remark, REVIEW-FIXES.md section 1) is in that component and Pagination.astro.
+// See PAGINATION.md.
+import Base from "../../../layouts/Base.astro";
+// Changed 2026-09-22 (VIDEO-PAGE.md, section 4): the cards of a page are Cards, plain data
+// built with postCard(), and the split by year comes from lib/lists.ts, shared with the Video
+// list; until then the page held the posts themselves and this file read their fields.
+// Changed 2026-09-22: the terms come from lib/terms.ts, which collects them over the posts
+// and the videos, instead of from lib/posts.ts, which saw the posts only. A term now holds
+// cards rather than posts, so this route no longer maps anything - the entries arrive flat
+// and the video lectures appear beside the articles. REVIEW-VIDEO.md, remarks 2 and 3.
+// Changed 2026-10-10 (T162): the backend cuts the list by year and by page; this route asks for the one page its
+// address names (getListRoute() in lib/terms.ts) and no longer receives every card to cut itself.
+import { getListRoute, getTermBySlug } from "../../../lib/terms";
+// termLabel added 2026-09-22 with the same change in CardList.astro: these chips are that
+// component's chips copied, so they print a tag the same way it is printed everywhere else.
+import { groupByYear, termLabel } from "../../../lib/lists";
+import { formatMonthDay } from "../../../lib/date";
+import { urlize, encodeSlug } from "../../../lib/urlize";
+// Changed 2026-10-12 with the two interface languages (src/i18n/lang.ts): ui (was t), every label
+// through T.
+// import { t } from "../../../i18n/strings";
+import { ui } from "../../../i18n/strings";
+import T from "../../../components/T.astro";
+// Added later on 2026-09-19: the year switcher and the page buttons around the list, through
+// one component shared with CardList.astro; see its header.
+import ListByYear from "../../../components/ListByYear.astro";
+
+// Changed 2026-10-10 (T034): rendered on demand. The term is found among the viewer's terms by its address segment, and
+// its page among the paginateByYear() entries the build used to turn into files.
+const context = { cookie: Astro.request.headers.get("cookie") ?? undefined };
+const term = await getTermBySlug("tags", Astro.params.slug, context);
+const entry =
+  term === undefined
+    ? undefined
+    : await getListRoute(
+        { tag: term.name },
+        `/tags/${encodeSlug(term.slug)}/`,
+        Astro.params.page,
+        context,
+      );
+if (term === undefined || entry === undefined) return Astro.rewrite("/404");
+// T162: `term.count` below is the term's own count from the backend's grouped answer (it was the length of its cards).
+const { page, years, year } = entry;
+const groups = groupByYear(page.items);
+
+// Changed 2026-10-10 (T034 of specs/001-self-hosted-club-site): the `prerender = true` line that T032 put here is gone.
+// Rendered on demand from the backend, one request each.
+---
+
+<Base title={term.title}>
+  <div class="mx-auto max-w-4xl px-4 py-8">
+    <!-- Tag heading -->
+    <div class="mb-8 text-center">
+      <div class="mb-2 flex items-center justify-center">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="mr-2 h-5 w-5 text-blue-600"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+          ></path>
+        </svg>
+        <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-100">
+          {term.title}
+        </h1>
+      </div>
+      {
+        /* Changed 2026-09-22: cards, not posts. The count now includes the video lectures that
+      carry the tag, because the term pages span both collections (lib/terms.ts). The label is
+      still t.articles, the theme's own string - with lectures counted in it, the wording is a
+      question for the owner rather than something to invent a key for. */
+      }
+      {
+        /* Changed 2026-10-12: the count and its word in both languages, with the Russian plural
+      (articles_count); it was the number followed by t.articles. Above the element, where the
+      current site has it: a comment inside leaves a space in the markup (T180). */
+      }
+      <div class="text-sm text-gray-600">
+        <T s={ui.articles_count(term.count)} />
+      </div>
+    </div>
+
+    {
+      /* Changed 2026-09-19 evening: the list sits inside ListByYear.astro, which puts the year
+      switcher above it and the page buttons below it, as on /posts/. */
+    }
+    <ListByYear page={page} years={years} currentYear={year}>
+      <!-- Posts grouped by year -->
+      <div class="space-y-16">
+        {
+          groups.map((group) => (
+            <div class="relative">
+              {/* Year indicator */}
+              <div class="mb-8 flex items-center">
+                <div class="relative flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-100 to-blue-50 text-xl font-bold text-blue-700 shadow-sm dark:from-slate-700/40 dark:to-slate-800/40 dark:text-blue-300">
+                  <span class="relative z-10">{group.year}</span>
+                  {/* Decorative halo */}
+                  <div class="absolute inset-0 rounded-full bg-blue-200 opacity-20 blur-sm dark:bg-slate-600" />
+                </div>
+                <div class="ml-4 h-0.5 flex-grow bg-gradient-to-r from-blue-200 via-blue-100 to-transparent" />
+              </div>
+
+              {/* Article list. The theme's `ml-8` became `sm:ml-8` on 2026-09-19 evening
+              (REVIEW-FIXES.md, section 9): the 2rem timeline indent under the year badge put the
+              cards 80px from the left edge of a phone and 48px from the right, which the reviewer
+              read as "shifted right". Below 640px the cards now span the column; from 640px up
+              the class is what it was, so nothing changes on a laptop. Hugo renders the indent at
+              every width. */}
+              <div class="space-y-6 sm:ml-8">
+                {/* Cards since 2026-09-22 (was `group.posts`, the posts themselves): url,
+                title, date, summary, tags and the last line come ready from postCard(). */}
+                {group.items.map((card) => (
+                  <div
+                    class="relative"
+                    data-locked={card.locked ? "" : undefined}
+                  >
+                    <a
+                      href={card.url}
+                      class="absolute inset-0 z-10"
+                      aria-label={card.title}
+                    />
+                    <div class="group overflow-hidden rounded-lg bg-white shadow-sm transition-shadow duration-300 hover:shadow-md dark:bg-slate-900">
+                      <div class="p-5">
+                        <div class="mb-3 flex flex-col justify-between sm:flex-row sm:items-baseline">
+                          <h3 class="text-xl font-medium text-gray-800 transition-colors group-hover:text-blue-600 dark:text-gray-100">
+                            {card.title}
+                          </h3>
+                          {/* Changed 2026-10-12: both languages (formatMonthDay returns a Phrase). */}
+                          <time class="mt-1 text-sm text-gray-500 sm:ml-4 sm:mt-0 dark:text-gray-400">
+                            <T s={formatMonthDay(card.date)} />
+                          </time>
+                        </div>
+
+                        {card.summary && (
+                          <div class="text-sm text-gray-600 dark:text-gray-300">
+                            {card.summary}
+                          </div>
+                        )}
+
+                        {card.tags.length > 0 && (
+                          <div class="relative z-20 mt-3 flex flex-wrap gap-2">
+                            {card.tags.map((tag) => (
+                              /* Hugo's `$isCurrentTag` compares the lower-case front matter
+                            tag with the title-cased page title, so it never matches and the
+                            "current tag" styling never appears. The comparison is kept
+                            faithful here rather than fixed: making it work would highlight a
+                            chip the live site leaves plain. The href's trailing slash was
+                            added the evening of 2026-09-19; see the note in CardList.astro. */
+                              <a
+                                href={`/tags/${encodeSlug(urlize(tag))}/`}
+                                class:list={[
+                                  "tag-chip inline-flex items-center rounded-full px-2.5 py-1 text-xs transition-colors",
+                                  tag === term.title
+                                    ? "bg-blue-100 text-blue-700 dark:bg-slate-800 dark:text-blue-300"
+                                    : "bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-600 dark:bg-slate-800 dark:text-gray-300 dark:hover:bg-slate-700",
+                                ]}
+                                onclick="event.stopPropagation();"
+                              >
+                                {/* Changed 2026-09-22, see the same chip in CardList.astro. The
+                                comparison above still weighs the raw front-matter word against
+                                the term title, which is Hugo's never-matching test and stays
+                                that way; only what is printed changed. */}
+                                {termLabel(tag)}
+                              </a>
+                            ))}
+                          </div>
+                        )}
+
+                        <div class="mt-4">
+                          <span class="inline-flex items-center text-sm text-blue-600 transition-transform duration-300 group-hover:translate-x-1">
+                            {/* Changed 2026-10-12 (T090): as in CardList.astro, a card the viewer sees without its
+                            content says so in place of the call to read. Both languages (card.action is a Phrase);
+                            the lock label is ui.locked_card (T178). One comment: each one leaves a space in the markup. */}
+                            <T s={card.locked ? ui.locked_card : card.action} />
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              class="ml-1 h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M14 5l7 7m0 0l-7 7m7-7H3"
+                              />
+                            </svg>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        }
+      </div>
+    </ListByYear>
+
+    <!-- Navigation links -->
+    <div class="mt-8 flex justify-center space-x-8">
+      <a
+        href="/tags/"
+        class="text-gray-600 transition-colors hover:text-blue-600"
+      >
+        {/* Changed 2026-10-12: both languages (was t.all_tags). */}
+        <T s={ui.all_tags} />
+      </a>
+      <a href="/" class="text-gray-600 transition-colors hover:text-blue-600">
+        {/* Changed 2026-10-12: both languages (was t.back_to_home). */}
+        <T s={ui.back_to_home} />
+      </a>
+    </div>
+  </div>
+</Base>

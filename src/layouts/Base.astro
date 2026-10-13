@@ -1,0 +1,295 @@
+---
+import "../styles/main.css";
+import "../styles/custom.css";
+
+import Head from "../components/Head.astro";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+import SEO from "../components/SEO.astro";
+import ScrollToTop from "../components/ScrollToTop.astro";
+import ContactModal from "../components/ContactModal.astro";
+
+import type { SiteConfig, PageLike } from "../lib/seo";
+// Added 2026-10-10 (T034): the address asked for, not the alias a year list is rendered under (src/lib/request-path.ts).
+import { requestedPath } from "../lib/request-path";
+import { site } from "../config";
+// Added 2026-10-12 with the two interface languages (site.i18n in src/config.ts).
+import { inLang, type Words } from "../i18n/lang";
+
+interface Props {
+  // Changed 2026-10-12: Words - interface text in both languages, or content as a string. Head.astro
+  // writes the title of every language; the share and search-engine tags below take the default
+  // language (site.i18n.defaultLanguage), the one the page is served in.
+  title?: Words;
+  description?: string;
+  content?: string;
+  isArticle?: boolean;
+  isVideo?: boolean;
+  publishDate?: Date;
+  updatedDate?: Date;
+  tags?: string[];
+  params?: PageLike["params"];
+  // Added the evening of 2026-09-25, the owner's decision: the site is for signed-in members. A page
+  // that does not set this is closed to a guest - the gate in the head below sends them to the
+  // sign-in page before anything is painted. The home page, the four /auth/ pages and the 404 page
+  // set it; on an open page a guest still sees only what is not marked members-only. Named so that
+  // false is the default and the safe side (CLAUDE.md, the props rule). Presentation only: the gate
+  // reads the same flag as the header icon, and what a visitor may read is decided by the service
+  // that holds the data, never here (AUTH.md section 10).
+  // (Reworded 2026-09-26 for the move to Clerk: the sentence named the previous auth provider, which
+  // CLERK.md section 0 orders out of this branch.)
+  // Reopened on 2026-09-25 after the colleague's review (AUTH.md section 11): the site is open to everyone, nothing is sent to the sign-in page any more, and
+  // the prop is gone with the redirect it controlled.
+  // Added 2026-10-02 with the admin panel (ADMIN.md): a page search engines must not index - the
+  // panel's pages, which a guest has no use for. Named so that false, the default, keeps every other
+  // page as it was. The sitemap leaves those pages out by its own filter (astro.config.mjs).
+  noindex?: boolean;
+  // Added 2026-10-12 (T090): the page of an entry the viewer sees only as a card. It carries no description, no og:*, no
+  // twitter:*, no article:* and no canonical address, and is not to be indexed; the title stays. False is the default.
+  locked?: boolean;
+}
+
+const {
+  title,
+  description,
+  content,
+  isArticle,
+  isVideo,
+  publishDate,
+  updatedDate,
+  tags,
+  params,
+  // Added 2026-10-02 (the prop's note above).
+  noindex,
+  // Added 2026-10-12 (T090, the prop's note above).
+  locked,
+} = Astro.props;
+
+// Removed 2026-10-11 (T054, first part): the inline block of the head that read the localStorage flag of the previous
+// sign-in provider and added kb-member is gone. Nothing writes that flag any more, and the server sets kb-member
+// itself (the note below), so the block was inert; `scripts/check-markup.mjs` removes the same block from the old
+// application's pages before it compares, so the comparison stays byte for byte on everything else.
+//
+// Changed 2026-10-11 (T052): a signed-in viewer's document carries kb-member from the server (the `class:list` on the
+// html element below), so the account icon and the members-only items are right in the first byte of the page and
+// nothing has to read a flag in the browser. A guest's markup is exactly what it was. The comment is here and not in
+// the template because a text node before the html element would change the page.
+//
+// Named seoSite, not site: under that name it shadowed the import from src/config.ts above,
+// which astro check reported as a declaration conflict (renamed 2026-09-16).
+// Changed in my-saved-work, merged 2026-09-17: the object is built from src/config.ts and has
+// no values of its own, so the tags follow the config. It used to say "Klub biolocation" and
+// point at /images/default-share.png, which does not exist. The shape differs because the
+// helpers in src/lib/seo.ts expect SiteConfig; baseUrl comes from astro.config.mjs through
+// Astro.site. Without share.defaultImage the share image falls back to the avatar.
+// See ARTICLE-PAGE-FIX.md, section 9.
+const seoSite: SiteConfig = {
+  title: site.title,
+  baseUrl: Astro.site?.toString() ?? "",
+  language: site.language,
+  avatar: { url: site.avatar },
+};
+
+const requestedPathname = requestedPath(
+  Astro.url.pathname,
+  Astro.locals.yearList === true,
+);
+const page: PageLike = {
+  // Changed 2026-10-12: the default language's title (the title prop's note).
+  title: title === undefined ? undefined : inLang(title, site.i18n.defaultLanguage),
+  description,
+  content,
+  permalink: new URL(requestedPathname, Astro.site).toString(),
+  isHome: requestedPathname === "/",
+  isPage: Boolean(isArticle),
+  // Added 2026-09-22: `isVideo` was accepted as a prop and then dropped here, so it was the one
+  // value this layout took and never used - `astro check` said so, and Open Graph called a video
+  // page a website. It travels to SEO.astro now, which turns it into `og:type` `video.other`.
+  isVideo: Boolean(isVideo),
+  publishDate,
+  updatedDate,
+  tags,
+  params: params ?? {},
+};
+---
+
+<!doctype html>
+<html
+  lang={site.language}
+  dir="ltr"
+  class:list={["h-full", Astro.locals.viewer.userId !== null && "kb-member"]}
+>
+  <head>
+    <meta charset="utf-8" />
+    {
+      /* The guest gate, added the evening of 2026-09-25 (AUTH.md section 10). It is the first thing
+      in the head and it is inline on purpose: it has to decide before the browser paints anything,
+      and a bundled module runs after the document is parsed, when a guest would already have seen
+      the page for a moment. define:vars implies is:inline (Astro 4, "Template directives
+      reference"), and it is how the three values reach a block that cannot import.
+
+      What it does: reads the flag the auth pages keep (src/scripts/auth-flag.ts - the five lines
+      of readAuthFlag() are repeated here because an inline block cannot import them; keep the two
+      in step). A valid flag marks the document kb-member, and custom.css shows the members-only
+      blocks under that class. Without a valid flag a closed page is replaced by the sign-in page,
+      with the address the guest asked for in next so that the sign-in can return them, and an
+      open page simply stays without the class: the carousel on the home page, the auth pages and
+      the 404 page are what a guest can see.
+
+      location.replace, not assignment, so that the closed page does not stay in the history
+      behind the sign-in page. The address is path and query only, never the origin, which is also
+      the only shape the sign-in page follows.
+
+      What this is not: a lock. Every file of a static site is public, so the HTML of a closed page
+      is a curl away, and a flag written by hand shows what curl would show anyway. What must stay
+      closed is answered by a server-side check (for paid videos, PAID-VIDEO.md); this block only
+      keeps a guest from seeing the frame. (Reworded 2026-09-28: the sentence named the previous
+      provider's access rules, which left the branch with it.) */
+    }
+    {
+      /* Reopened on 2026-09-25 after the colleague's review (AUTH.md section 11). The redirect is gone: a guest reads every page, the posts, the videos and
+      their comments, as before the gate. What the block still does is mark the document kb-member
+      while the flag is valid, which is all custom.css needs to show the one members-only element
+      left, the Account item of the menu. Still inline and first in the head, so the item never
+      flashes for a guest; still presentation only. */
+    }
+
+{import.meta.env.DEV && (
+    <script is:inline type="text/javascript">
+      (function (m, e, t, r, i, k, a) {
+        m[i] =
+          m[i] ||
+          function () {
+            (m[i].a = m[i].a || []).push(arguments);
+          };
+        m[i].l = 1 * new Date();
+        for (var j = 0; j < document.scripts.length; j++) {
+          if (document.scripts[j].src === r) {
+            return;
+          }
+        }
+        ((k = e.createElement(t)),
+          (a = e.getElementsByTagName(t)[0]),
+          (k.async = 1),
+          (k.src = r),
+          a.parentNode.insertBefore(k, a));
+      })(
+        window,
+        document,
+        "script",
+        "https://mc.yandex.ru/metrika/tag.js?id=113224698",
+        "ym",
+      );
+      ym(113224698, "init", {
+        ssr: true,
+        webvisor: true,
+        clickmap: true,
+        ecommerce: "dataLayer",
+        referrer: document.referrer,
+        url: location.href,
+        accurateTrackBounce: true,
+        trackLinks: true,
+      });
+    </script>
+    )}
+    <noscript><div>
+        <img
+          src="https://mc.yandex.ru/watch/113224698"
+          style="position:absolute; left:-9999px;"
+          alt=""
+        />
+      </div></noscript>
+    
+
+    {
+      /* noindex on every closed page, added late on 2026-09-25 at the owner's word (AUTH.md section
+      10): a search engine that runs no scripts would otherwise index the HTML the gate above only
+      hides, and a searcher would land on the sign-in page. Open pages (the home page, the auth
+      pages, 404) are left as they were; the sitemap in astro.config.mjs lists the home page alone. */
+    }
+    {
+      /* Reopened on 2026-09-25 after the colleague's review (AUTH.md section 11): no page is closed, so the noindex line is gone and the sitemap is back to
+      what it was before the gate. */
+    }
+    {
+      /* Added 2026-10-02: the admin panel's pages only (the noindex prop above). */
+    }
+    {(noindex || locked) && <meta name="robots" content="noindex, nofollow" />}
+    {
+      /* Added 2026-10-12 (T090): a locked entry's page says nothing about itself to a crawler or a share preview. */
+    }
+    {!locked && <SEO site={seoSite} page={page} />}
+    <Head title={title} description={description} />
+  </head>
+  <body class="flex flex-col bg-gray-50 font-bilingual">
+    {
+      /* The max-w-4xl wrapper that used to live here is now inside Header.astro: it carries
+      overflow-x-auto, which would clip the responsive drop-down panel, so the panel has to be
+      its sibling. The markup this renders is unchanged. */
+    }
+    <header class="fixed left-0 top-0 z-30 w-full bg-white shadow-sm">
+      <Header />
+    </header>
+
+    {
+      /* `isolate` on main was added on 2026-09-19 (REVIEW-FIXES.md, section 8). The tag chips
+      and the year badges carry z-10/z-20, and with no stacking context between them and the
+      root they are painted after the footer. Chromium then rasterises them again, text
+      antialiasing included, for as long as a footer icon's hover transform is animating,
+      which the reviewer saw as the chip text flickering. With main as its own stacking context
+      they are painted where they stand, before the footer. Nothing in main has to stack
+      against the header or the footer, so the class changes no picture. Hugo has the same
+      flicker. */
+    }
+    <div class="flex min-h-screen flex-1 flex-col pt-24">
+      <main
+        class="isolate mx-auto w-full max-w-4xl flex-1 overflow-x-auto px-8 sm:overflow-visible sm:px-10"
+      >
+        <slot />
+      </main>
+    </div>
+
+    {
+      /* members-only on the footer, added later on the evening of 2026-09-25 at the owner's word: a
+      guest sees the carousel, the theme switch and the sign-in, and nothing else, the footer included.
+      Hidden by custom.css until the gate above marks the document kb-member (AUTH.md section 10). */
+    }
+    {
+      /* Reopened on 2026-09-25 after the colleague's review (AUTH.md section 11): the footer is for everyone again. */
+    }
+    <footer
+      class="mx-auto w-full max-w-4xl overflow-x-auto px-6 sm:overflow-visible"
+    >
+      <Footer />
+      <ContactModal />
+    </footer>
+
+    {
+      /* Changed 2026-09-22: the path lost its .js extension when src/scripts/site.js became
+      site.ts. Written without an extension rather than as "./site.ts" because TypeScript rejects
+      an import path ending in .ts unless allowImportingTsExtensions is set, which this project's
+      preset does not set; Vite resolves the extension either way. */
+    }
+    <script>
+      import "../scripts/site";
+    </script>
+
+    {
+      /* Removed 2026-10-13 (T106): the previous comment service's count script and the note that stood here. The
+      site's own comments (src/components/Comments.astro) need no script in the head, and no list shows a count. */
+    }
+
+    <ScrollToTop />
+
+    <script>
+      document.addEventListener("astro:page-load", () => {
+        if (typeof ym === "function") {
+          ym(113224698, "hit", window.location.href, {
+            title: document.title,
+            referrer: document.referrer,
+          });
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,417 @@
+---
+// The admin panel for posts, /admin/posts/. Added 2026-10-02 at the owner's request; the design is
+// the consilium verdict .specify/consilium/2026-10-02-admin-posts.md, and ADMIN.md is the how-to.
+//
+// An editor without a GitHub account lists, adds, edits and deletes the posts here. The page is
+// markup only; src/scripts/admin-posts.ts loads Clerk, asks the content service
+// (workers/content-admin/, site.admin in src/config.ts) and fills it in. Nothing here is a lock:
+// the service checks the editor's role on every request, and the page only hides what the visitor
+// could not use anyway.
+//
+// Rewritten 2026-10-12 (T099 of specs/001-self-hosted-club-site): the paragraph above describes the
+// page before the rewrite. The script now asks the club's own backend, /api/admin/posts, with the
+// cookie the browser holds (contracts/http-api.md, "Posts and videos in the panel"); there is no
+// Clerk and no content service. The page answers 404 to anyone who is neither a metr nor an admin,
+// as /admin/users/ does, so the form is never sent to a visitor. New on the page: who may read the
+// post (everyone, signed-in members, the chosen statuses and people), the teaser, a preview that
+// is the stored render, the list of deleted posts with a restore button. A save is checked by the
+// server's content rules and by `If-Match`, so two editors never overwrite each other silently.
+//
+// Decisions that would otherwise look like mistakes:
+// - Base.astro, as the auth pages use it, so the panel has the site's header, its theme switch and
+//   its two palettes: the owner asked for the panel to follow the site's light and dark themes.
+// - Every element the script fills is in this markup, including the rows and the tag buttons as
+//   templates: Tailwind sees their classes here, and a scoped style could not reach markup a script
+//   builds (CLAUDE.md, the search page pitfall), so the page has no style block at all.
+// - The fields use bg-[#ffffff], not bg-white: custom.css paints every .bg-white white with
+//   !important, which would keep them white in the dark theme (the same fix as the feedback form,
+//   FEEDBACK-FORM.md).
+// - noindex, and the sitemap leaves /admin/ out (astro.config.mjs): nothing here is for a search
+//   engine. The page is not in the menu; an editor opens it by its address.
+// - The labels are in Russian, the language of the site's own pages.
+import Base from "../../../layouts/Base.astro";
+// Added 2026-10-02 at the owner's request: the way back to the account page and to /admin/users/.
+import AdminNav from "../../../components/AdminNav.astro";
+// Added later on 2026-10-02 at the owner's request: the pager under the list.
+import AdminPager from "../../../components/AdminPager.astro";
+// Added 2026-10-12 at the owner's request (the interface in two languages, src/i18n/lang.ts): the
+// last point above no longer holds - every label is in both languages, through T, and the Russian
+// that stood here is the ru half of the entries in src/i18n/admin.ts. The page does not reload on a
+// language switch: an editor may have unsaved text in the form, so the script writes its own
+// messages in both languages as well (admin-posts.ts).
+import { ui } from "../../../i18n/strings";
+import { adminUi } from "../../../i18n/admin";
+import { langAttrs } from "../../../i18n/lang";
+import T from "../../../components/T.astro";
+import AdminImages from "../../../components/AdminImages.astro";
+// Added 2026-10-12 (T099): the statuses the audience form offers, from the one list (src/config.ts).
+import { site } from "../../../config";
+
+// The class lists the fields share, spelled once. Tailwind reads them here like any other class.
+const field =
+  "w-full rounded border border-gray-300 bg-[#ffffff] p-2.5 text-sm text-gray-800 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200 dark:focus:border-blue-500 dark:focus:ring-blue-500";
+const label = "mb-1 block text-sm text-gray-500 dark:text-slate-400";
+const error = "mt-1 text-xs text-red-600 dark:text-red-400";
+const primary =
+  "rounded bg-blue-600 px-4 py-2 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-50";
+const secondary =
+  "rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 transition-opacity hover:opacity-80 disabled:opacity-50 dark:border-slate-600 dark:text-gray-200";
+
+// Added 2026-10-10 (T032 of specs/001-self-hosted-club-site): the site renders on demand by default now
+// (astro.config.mjs, output "server"). This page stays built at build time: it holds no data from the backend
+// (a static shell around a browser script), so there is nothing to render per request.
+// Removed 2026-10-11 (T052): the `prerender = true` line that stood here is gone. A prerendered file is the same for
+// every visitor, so the header could not know who was looking; the page is rendered per request now, and the header is
+// right from the first byte (T142).
+
+// Added 2026-10-12 (T099): the page answers 404, not a redirect, to anyone who is neither a metr nor an admin, a visitor
+// with no session included, as /admin/users/ does; the viewer is read from the session by src/middleware.ts.
+const { status } = Astro.locals.viewer;
+if (status !== "metr" && status !== "admin") return Astro.rewrite("/404");
+
+// The statuses a post can be restricted to: every named one but the guest (nobody is "given" it) and the blocked.
+const restrictable = site.admin.statuses.filter(
+  (s) => s !== "guest" && s !== "blocked",
+);
+---
+
+{
+  /* Changed 2026-10-12: here and below, every label through T (the frontmatter's note). */
+}
+<Base title={ui.admin_posts_title} noindex>
+  <section class="mx-auto max-w-3xl">
+    <AdminNav current="posts" />
+    <h1 class="mb-6 text-2xl font-bold"><T s={ui.admin_posts_title} /></h1>
+    <p id="admin-status" class="mb-4 text-sm" role="status" aria-live="polite">
+      <T s={ui.auth_loading} />
+    </p>
+    <noscript>
+      <p class="text-sm">
+        <T s={adminUi.posts_noscript} />
+      </p>
+    </noscript>
+
+    <div id="admin-list" hidden>
+      <div class="mb-4 flex flex-wrap items-center gap-3">
+        <button id="admin-new" type="button" class={primary}>
+          <T s={adminUi.posts_new} />
+        </button>
+        <label class="flex items-center gap-2 text-sm">
+          <input id="admin-deleted" type="checkbox" />
+          <T s={adminUi.posts_show_deleted} />
+        </label>
+      </div>
+      <form id="admin-search" class="mb-4 flex flex-wrap gap-3">
+        <input
+          id="admin-query"
+          type="search"
+          class:list={[field, "min-w-0 flex-1"]}
+          {...langAttrs({ placeholder: adminUi.posts_search })}
+          autocomplete="off"
+        />
+        <button type="submit" class={secondary}>
+          <T s={adminUi.posts_find} />
+        </button>
+      </form>
+      <p
+        id="admin-count"
+        class="mb-2 text-sm text-gray-500 dark:text-slate-400"
+      >
+      </p>
+      <ul
+        id="admin-posts"
+        class="divide-y divide-gray-200 border-y border-gray-200 dark:divide-slate-700 dark:border-slate-700"
+      >
+      </ul>
+      {
+        /* Added later on 2026-10-02 at the owner's request: 20 posts to a page
+        (AdminPager.astro). */
+      }
+      <AdminPager id="admin-pager" label={adminUi.posts_pages} />
+    </div>
+
+    <template id="admin-post-row">
+      <li class="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
+        <div class="min-w-0 flex-1">
+          <a
+            data-title
+            class="font-medium text-blue-600 hover:underline dark:text-blue-400"
+          ></a>
+          <p class="text-xs text-gray-500 dark:text-slate-400">
+            <span data-date></span> · <span data-state></span> ·
+            <span data-slug></span>
+          </p>
+        </div>
+        <button data-edit type="button" class={secondary}>
+          <T s={adminUi.posts_edit} />
+        </button>
+        {
+          /* Added later on 2026-10-02 at the owner's request: a new post that starts as a copy of
+          this one, for editors who would rather change fields than write Markdown from nothing
+          (admin-posts.ts, copyPost). */
+        }
+        <button data-copy type="button" class={secondary}>
+          <T s={adminUi.posts_copy} />
+        </button>
+        <button data-delete type="button" class={secondary}>
+          <T s={adminUi.posts_delete} />
+        </button>
+        <button data-restore type="button" class={secondary} hidden>
+          <T s={adminUi.posts_restore} />
+        </button>
+      </li>
+    </template>
+
+    <form id="admin-editor" class="space-y-4" novalidate hidden>
+      <h2 id="admin-editor-heading" class="text-xl font-bold"></h2>
+
+      <div>
+        <label for="admin-title" class={label}
+          ><T s={adminUi.field_title} /></label
+        >
+        <input
+          id="admin-title"
+          name="title"
+          type="text"
+          class={field}
+          {...langAttrs({ placeholder: adminUi.ph_title })}
+        />
+        <p data-error-for="title" class={error} hidden></p>
+      </div>
+
+      <div>
+        <label for="admin-slug" class={label}>
+          <T s={adminUi.field_slug} />
+        </label>
+        <input
+          id="admin-slug"
+          name="slug"
+          type="text"
+          class={field}
+          autocomplete="off"
+          spellcheck="false"
+          {...langAttrs({ placeholder: adminUi.ph_slug })}
+        />
+        <p data-error-for="slug" class={error} hidden></p>
+      </div>
+
+      <div>
+        <label for="admin-date" class={label}>
+          <T s={adminUi.field_date} />
+        </label>
+        <input
+          id="admin-date"
+          name="date"
+          type="datetime-local"
+          step="1"
+          class={field}
+        />
+        <p data-error-for="date" class={error} hidden></p>
+      </div>
+
+      <div>
+        <label for="admin-description" class={label}
+          ><T s={adminUi.field_description} /></label
+        >
+        <input
+          id="admin-description"
+          name="description"
+          type="text"
+          class={field}
+          {...langAttrs({ placeholder: adminUi.ph_description })}
+        />
+        <p data-error-for="description" class={error} hidden></p>
+      </div>
+
+      <div>
+        <label for="admin-tags" class={label}
+          ><T s={adminUi.field_tags} /></label
+        >
+        <input
+          id="admin-tags"
+          name="tags"
+          type="text"
+          class={field}
+          {...langAttrs({ placeholder: adminUi.ph_tags })}
+        />
+        <p data-error-for="tags" class={error} hidden></p>
+        <div data-terms-for="admin-tags" class="mt-2 flex flex-wrap gap-2">
+        </div>
+      </div>
+
+      <div>
+        <label for="admin-categories" class={label}>
+          <T s={adminUi.field_categories} />
+        </label>
+        <input
+          id="admin-categories"
+          name="categories"
+          type="text"
+          class={field}
+          {...langAttrs({ placeholder: adminUi.ph_categories })}
+        />
+        <p data-error-for="categories" class={error} hidden></p>
+        <div
+          data-terms-for="admin-categories"
+          class="mt-2 flex flex-wrap gap-2"
+        >
+        </div>
+      </div>
+
+      {
+        /* Added 2026-10-12 (T099): who may read the post. A draft (audience "hidden" on the server)
+        stays its own checkbox, as it was; the list below is what a post that is not a draft is
+        open to. Statuses and named people matter only for the last choice, and the script shows
+        them only then. */
+      }
+      <div>
+        <label for="admin-audience" class={label}>
+          <T s={adminUi.field_audience} />
+        </label>
+        {
+          /* The options hold plain text, which cannot carry a span per language, so the script
+          writes them (admin-posts.ts, fillAudience) and writes them again on a language switch. */
+        }
+        <select id="admin-audience" name="audience" class={field}></select>
+        <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+          <T s={adminUi.audience_help} />
+        </p>
+        <p data-error-for="audience" class={error} hidden></p>
+      </div>
+
+      {
+        /* Changed 2026-10-12 (the owner could not find where the chosen are chosen): the block is always
+        on the page and is greyed and disabled until the audience is "chosen only" (admin-posts.ts,
+        showRestricted); it used to appear only after that choice. */
+      }
+      <fieldset
+        id="admin-restricted"
+        class="space-y-3 rounded border border-gray-300 p-3 dark:border-slate-700"
+        disabled
+      >
+        <legend class="px-1 text-sm text-gray-500 dark:text-slate-400">
+          <T s={adminUi.choose_who} />
+        </legend>
+        <div>
+          <p class={label}><T s={adminUi.field_statuses} /></p>
+          <div class="flex flex-wrap gap-x-4 gap-y-1">
+            {
+              restrictable.map((name) => (
+                <label class="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="statuses" value={name} />
+                  <T s={site.admin.statusNames[name]} />
+                </label>
+              ))
+            }
+          </div>
+          <p data-error-for="statuses" class={error} hidden></p>
+        </div>
+        <div>
+          <label for="admin-user-ids" class={label}>
+            <T s={adminUi.field_user_ids} />
+          </label>
+          <input
+            id="admin-user-ids"
+            name="userIds"
+            type="text"
+            class={field}
+            inputmode="numeric"
+            autocomplete="off"
+            {...langAttrs({ placeholder: adminUi.ph_user_ids })}
+          />
+          <p data-error-for="userIds" class={error} hidden></p>
+          <div class="mt-2 flex flex-wrap gap-3">
+            <input
+              id="admin-user-query"
+              type="search"
+              class:list={[field, "ym-disable-keys min-w-0 flex-1"]}
+              {...langAttrs({ placeholder: adminUi.users_query })}
+              autocomplete="off"
+            />
+            <button id="admin-user-find" type="button" class={secondary}>
+              <T s={adminUi.user_find} />
+            </button>
+          </div>
+          <ul
+            id="admin-user-results"
+            class="ym-hide-content mt-2 space-y-1 text-sm"
+          >
+          </ul>
+        </div>
+      </fieldset>
+
+      <label class="flex items-center gap-2 text-sm">
+        <input id="admin-teaser" name="teaser" type="checkbox" />
+        <T s={adminUi.field_teaser} />
+      </label>
+
+      <label class="flex items-center gap-2 text-sm">
+        <input id="admin-draft" name="draft" type="checkbox" />
+        <T s={adminUi.field_draft} />
+      </label>
+
+      <div>
+        <label for="admin-body" class={label}>
+          <T s={adminUi.field_body} />
+        </label>
+        <textarea
+          id="admin-body"
+          name="body"
+          rows="18"
+          class={field}
+          {...langAttrs({ placeholder: adminUi.ph_body })}></textarea>
+        <p data-error-for="body" class={error} hidden></p>
+      </div>
+
+      {
+        /* Added 2026-10-12 (T143): upload a picture or paste an address, put it into the text. */
+      }
+      <AdminImages />
+
+      <div id="admin-preview-box" hidden>
+        <p class={label}><T s={adminUi.preview_title} /></p>
+        {
+          /* Filled with the server's render of the text, which the same sanitizer as a save has
+          cleaned (the preview route); `prose` is the site's hook class for article text. */
+        }
+        <div
+          id="admin-preview"
+          class="prose max-w-none rounded border border-gray-300 p-4 dark:border-slate-700"
+        >
+        </div>
+      </div>
+
+      <p
+        id="admin-form-error"
+        class="text-sm text-red-600 dark:text-red-400"
+        role="alert"
+        hidden
+      >
+      </p>
+
+      <div class="flex flex-wrap gap-3">
+        <button id="admin-save" type="submit" class={primary}>
+          <T s={adminUi.posts_save} />
+        </button>
+        <button id="admin-preview-button" type="button" class={secondary}>
+          <T s={adminUi.posts_preview} />
+        </button>
+        <button id="admin-cancel" type="button" class={secondary}>
+          <T s={adminUi.posts_cancel} />
+        </button>
+      </div>
+    </form>
+
+    <template id="admin-term">
+      <button
+        type="button"
+        class="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:opacity-80 dark:border-slate-600 dark:text-slate-300"
+      ></button>
+    </template>
+  </section>
+</Base>
+
+<script>
+  // The panel's script; its header says what it does and why.
+  import "../../../scripts/admin-posts";
+</script>

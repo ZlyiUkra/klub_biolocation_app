@@ -1,0 +1,104 @@
+---
+// The Tags menu item. Port of
+// ../klub_biolocation/themes/void/layouts/taxonomy/tag.terms.html, following the procedure
+// in MIGRATION-PLAN.md §4.1. Class attributes are copied verbatim.
+//
+// HOW THE GO TEMPLATE MAPS ONTO THIS FILE
+//
+//   .Title                 -> the literal "Tags"; Hugo names a terms page after its taxonomy.
+//   i18n "tags_help_text"  -> t.tags_help_text. Unlike the Categories page, this key DOES
+//                             exist in the theme's en.toml, so it comes from strings.ts.
+//   .Data.Terms.ByCount    -> the `tags` const below.
+//   .Page.RelPermalink     -> `/tags/<slug>/`, with the trailing slash.
+//   .Page.Title            -> term.title, title-cased by lib/titleize.ts.
+//   .Count                 -> term.posts.length.
+//   i18n "back_to_home"    -> t.back_to_home.
+import Base from "../../layouts/Base.astro";
+// Changed 2026-09-22: the terms come from lib/terms.ts, which collects them over the posts
+// and the videos, instead of from lib/posts.ts, which saw the posts only. A term now holds
+// cards rather than posts, so this route no longer maps anything - the entries arrive flat
+// and the video lectures appear beside the articles. REVIEW-VIDEO.md, remarks 2 and 3.
+// Changed 2026-10-10 (T162): these pages need a term's name, label and number of entries and nothing else, so they
+// take the backend's counts (getTermCounts) instead of the cards of every entry (getTerms).
+import { getTermCounts } from "../../lib/terms";
+import { encodeSlug } from "../../lib/urlize";
+// Changed 2026-10-12 with the two interface languages (src/i18n/lang.ts): ui (was t), the title
+// from site.sections (it was the literal "Tags"), and every label through T.
+// import { t } from "../../i18n/strings";
+import { ui } from "../../i18n/strings";
+import { site } from "../../config";
+import T from "../../components/T.astro";
+
+const title = site.sections.tags;
+
+// Hugo's `.Data.Terms.ByCount`: most used first, ties broken by the term name. getTerms()
+// already sorts by name, so a stable sort on the count alone produces Hugo's order - checked
+// against the Hugo build, where all six tags have one post and come out alphabetically.
+// Changed 2026-10-10 (T034): the viewer's cookie is passed on, for phase 2.
+const context = { cookie: Astro.request.headers.get("cookie") ?? undefined };
+const tags = (await getTermCounts("tags", context)).sort(
+  (a, b) => b.count - a.count,
+);
+
+// Changed 2026-10-10 (T034 of specs/001-self-hosted-club-site): the `prerender = true` line that T032 put here is gone.
+// Rendered on demand from the backend.
+---
+
+<Base title={title}>
+  <div class="mx-auto max-w-4xl px-4 py-8">
+    {/* Changed 2026-10-12: title and the hint through T, both languages. */}
+    <h1 class="mb-8 text-center text-3xl font-bold text-gray-800">
+      <T s={title} />
+    </h1>
+
+    <!-- Brief hint -->
+    <div class="mb-8 text-center text-sm text-gray-600">
+      <p><T s={ui.tags_help_text} /></p>
+    </div>
+
+    <!-- Tag cloud -->
+    <div class="rounded-lg bg-white p-6 shadow-sm dark:bg-slate-900">
+      <div class="flex flex-wrap justify-center gap-3">
+        {
+          tags.map((tag) => (
+            <a href={`/tags/${encodeSlug(tag.slug)}/`} class="group">
+              <div class="tag-chip flex items-center rounded-full bg-blue-50 px-4 py-2 text-blue-700 transition-colors hover:bg-blue-100 dark:bg-slate-800 dark:text-blue-300 dark:hover:bg-slate-700">
+                <span class="font-medium">{tag.title}</span>
+                {/* No whitespace inside the badge, matching Hugo's minified output; see
+                the same note in src/pages/categories/index.astro. */}
+                <span
+                  class="count-badge ml-2 rounded-full bg-white px-2 py-0.5 text-xs text-blue-600 dark:bg-slate-700 dark:text-blue-300"
+                  set:html={String(tag.count)}
+                />
+              </div>
+            </a>
+          ))
+        }
+      </div>
+    </div>
+
+    <!-- Back to home link -->
+    <div class="mt-10 text-center">
+      <a
+        href="/"
+        class="inline-flex items-center text-gray-600 transition-colors hover:text-blue-600"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="mr-2 h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+        </svg>
+        {/* Changed 2026-10-12: both languages (was t.back_to_home). */}
+        <T s={ui.back_to_home} />
+      </a>
+    </div>
+  </div>
+</Base>

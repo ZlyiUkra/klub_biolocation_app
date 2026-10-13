@@ -1,0 +1,125 @@
+---
+// The About menu item. Port of
+// ../klub_biolocation/themes/void/layouts/about/single.html (MIGRATION-PLAN.md §4.1).
+// Class attributes are copied verbatim.
+//
+// WHICH TEMPLATE: the theme ships two candidates, `about/single.html` and
+// `page/about.html`. Hugo picks the first one, because ../klub_biolocation/content/about.md
+// sets `layout = 'about'` in its front matter - confirmed against the rendered page, which
+// has the 24/28 avatar and the `p-8 sm:p-10` content card from about/single.html, not the
+// 28/32 avatar, social icons and `p-6 sm:p-8` card from page/about.html. `page/about.html`
+// is therefore dead code in this site and is NOT ported.
+//
+// That `layout` key could not be carried into the Markdown: it is reserved by Astro, where
+// it names a layout file to import. The choice is made here instead, in code.
+//
+// HOW THE GO TEMPLATE MAPS ONTO THIS FILE
+//
+//   site.Params.avatar.url  -> site.avatar in src/config.ts. Hugo wraps the avatar block in
+//                              `with`, so it disappears entirely when unset - hence the
+//                              conditional rather than an empty img.
+//   $.Site.Title            -> site.title, used as the avatar's alt text.
+//   .Title                  -> about.data.title.
+//   .Content                -> the rendered Markdown body.
+//   i18n "back_to_home"     -> t.back_to_home.
+//   partial "disqus_lazy"   -> nothing. The partial renders only when a Disqus shortname is
+//                              configured, and hugo.toml configures none, so the live page
+//                              has the wrapper div with its inline style and NOTHING inside.
+//                              The empty div is reproduced because it paints a visible white
+//                              card below the content.
+import { getEntry } from "astro:content";
+import Base from "../layouts/Base.astro";
+import { site } from "../config";
+// Changed 2026-10-12 with the two interface languages (src/i18n/lang.ts): ui (was t), through T.
+// import { t } from "../i18n/strings";
+import { ui } from "../i18n/strings";
+import T from "../components/T.astro";
+
+const about = await getEntry("pages", "about");
+if (!about) throw new Error("src/content/pages/about.md is missing");
+const { Content } = await about.render();
+// Added 2026-10-12: the page's name is the menu item's, in both languages (site.sections.about).
+// The front matter's title, "About", was English on a page whose text is Russian, and a content
+// title cannot follow the language switch; about.md keeps it, and nothing prints it now.
+const title = site.sections.about;
+
+// Added 2026-10-10 (T032 of specs/001-self-hosted-club-site): the site renders on demand by default now
+// (astro.config.mjs, output "server"). This page stays built at build time: it holds no data from the backend
+// (a static shell around a browser script), so there is nothing to render per request.
+// Removed 2026-10-11 (T052): the `prerender = true` line that stood here is gone. A prerendered file is the same for
+// every visitor, so the header could not know who was looking; the page is rendered per request now, and the header is
+// right from the first byte (T142).
+---
+
+<Base title={title}>
+  <article class="mx-auto max-w-4xl">
+    <!-- Title only, no meta/date/reading time/PV -->
+    <div class="mb-12 text-center">
+      {
+        site.avatar && (
+          <div class="mx-auto mb-4 h-24 w-24 overflow-hidden rounded-full shadow-sm ring-2 ring-gray-200 md:h-28 md:w-28 dark:ring-slate-700">
+            {/* width and height added 2026-09-22: without them the browser cannot reserve the
+            avatar's box before the file arrives, so the heading below it jumps when it does. The
+            numbers are the CSS box at the wider of the two sizes this wrapper uses, h-28 w-28
+            (7rem, 112px); the classes still decide what is displayed, and object-cover still
+            crops whatever the real file's aspect ratio is. The other two images in the tree,
+            in Header.astro and Carousel.astro, have carried theirs from the start. */}
+            <img
+              src={site.avatar}
+              alt={site.title}
+              width="112"
+              height="112"
+              class="h-full w-full object-cover"
+            />
+          </div>
+        )
+      }
+      {
+        /* Changed 2026-10-12: title, both languages (was about.data.title; see its note). */
+      }
+      <h1 class="mb-4 text-4xl font-bold text-gray-900 dark:text-gray-100">
+        <T s={title} />
+      </h1>
+    </div>
+
+    <!-- Content -->
+    <div
+      class="mb-12 overflow-hidden rounded-lg bg-white shadow-sm dark:bg-slate-900"
+    >
+      <div class="prose prose-sm sm:prose lg:prose-lg max-w-none p-8 sm:p-10">
+        <Content />
+      </div>
+    </div>
+
+    <!-- Back to home only -->
+    <div class="mb-12 flex justify-center">
+      <a
+        href="/"
+        class="inline-flex items-center text-gray-600 transition-colors hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-300"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="mr-2 h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+        </svg>
+        {/* Changed 2026-10-12: both languages (was t.back_to_home). */}
+        <T s={ui.back_to_home} />
+      </a>
+    </div>
+  </article>
+
+  <!-- Optional comments (lazy Disqus). Empty until a shortname is configured. -->
+  <div
+    class="theme-card mx-auto mt-8 max-w-4xl overflow-hidden rounded-lg bg-white shadow-md dark:bg-slate-900"
+    style="--tw-prose-body: #374151; --tw-prose-headings: #111827; --tw-prose-links: #2563eb; --tw-prose-links-hover: #1d4ed8; --tw-prose-code-bg: #f3f4f6; color: #374151;"
+  >
+  </div>
+</Base>

@@ -1,0 +1,29 @@
+---
+import Base from "../layouts/Base.astro";
+// Added 2026-10-12 with the two interface languages (src/i18n/lang.ts): the link to the home page
+// says what the menu item says, in both languages.
+import { site } from "../config";
+import T from "../components/T.astro";
+
+// Added 2026-10-10 (T032 of specs/001-self-hosted-club-site): the site renders on demand by default now
+// (astro.config.mjs, output "server"). This page stays built at build time: it holds no data from the backend
+// (a static shell around a browser script), so there is nothing to render per request.
+// Changed the same day (T034): the `prerender = true` line is gone, and this is the one static-looking page that must
+// not have it. A page answers a missing entry with `Astro.rewrite("/404")`, and a rewrite can only reach a route that
+// the server itself holds: a prerendered route is a file the server bundle does not contain, and the rewrite failed
+// with a 500 (measured, 2026-10-10). The page has no data, so rendering it per request costs nothing worth naming.
+---
+
+{
+  /* openToGuests, added the evening of 2026-09-25 with the guest gate (AUTH.md section 10): a page
+  that says "there is nothing here" is not members-only, and a guest who mistypes an address should
+  read that rather than be asked to sign in for a page that does not exist. */
+}
+{
+  /* Reopened on 2026-09-25 after the colleague's review (AUTH.md section 11): every page is open, so the prop is gone from the layout. */
+}
+<Base title="404">
+  <h1>404</h1>
+  {/* Changed 2026-10-12: the menu's name of the home page (it read "Home"). */}
+  <p><a href="/"><T s={site.sections.home} /></a></p>
+</Base>

@@ -1,0 +1,60 @@
+---
+// Changed 2026-10-12 with the two interface languages (src/i18n/lang.ts): ui (was t), the label
+// through T, and the icon's name as a language-dependent aria-label.
+// import { t } from "../i18n/strings";
+import { ui } from "../i18n/strings";
+import { langAttrs } from "../i18n/lang";
+import T from "./T.astro";
+// Changed 2026-09-22: titleize() until then. termLabel() is titleize() plus the rename map in
+// src/config.ts, so the tag under an article is called what the Tags page and the cloud on the
+// home page call it. Nothing about the output changes while that map is empty.
+import { termLabel } from "../lib/lists";
+import { encodeSlug, urlize } from "../lib/urlize";
+
+interface Props {
+  tags: string[];
+}
+
+const { tags } = Astro.props;
+---
+
+{
+  tags.length > 0 && (
+    <div class="tags-container">
+      {/* Changed 2026-10-12: the label in both languages (it read "Tags:"). */}
+      <div class="mb-2 font-medium text-gray-700 dark:text-gray-300">
+        <T s={ui.terms_label} />
+      </div>
+      <div class="flex flex-wrap gap-2">
+        {tags.map((tag) => (
+          <a
+            href={`/tags/${encodeSlug(urlize(tag))}/`}
+            class="tag-chip inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-700 transition-colors hover:bg-blue-100 dark:bg-slate-800 dark:text-blue-300 dark:hover:bg-slate-700"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="mr-1.5 h-3.5 w-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              role="img"
+              {...langAttrs({ "aria-label": ui.tag_icon_title })}
+            >
+              {/* Changed 2026-10-12: the icon was named by aria-labelledby="tagIconTitle" and a
+              title element holding t.tag_icon_title. An SVG title holds text only, so it cannot
+              carry both languages, and the id repeated on every chip; the name is a
+              language-dependent aria-label above now, and the title element is gone. */}
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+              />
+            </svg>
+            {termLabel(tag)}
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}

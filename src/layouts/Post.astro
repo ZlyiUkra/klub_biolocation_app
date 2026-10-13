@@ -1,0 +1,58 @@
+---
+// The post page: maps one entry of the `posts` collection onto ArticleLayout.astro, the frame
+// shared with the video page (VideoLayout.astro), and passes the body through. Since
+// 2026-09-22 (VIDEO-PAGE.md, section 4). From 2026-09-18 to that day this file held the frame's
+// Base layout and the table-of-contents sidebar, and for a day its prop was `Post | Video` so
+// that the colleague's video route could render through it; the frame is in ArticleLayout.astro
+// now, with the sidebar's notes, so that both pages get it without a copy.
+//
+// What a post supplies that the frame cannot know: the reading time as the text of the clock
+// item (Hugo: math.Round (div (countwords .Content) 200.0), readingTime() in lib/posts.ts, and
+// the i18n string reading_time), `lastmod` as the updated date, and the share fields of the
+// posts schema, in the order ArticleLayout.astro tries them, and the previous and next posts
+// as plain links (postLink()), so that the frame and PostNav.astro know no collection.
+import ArticleLayout from "./ArticleLayout.astro";
+import type { MarkdownHeading } from "astro";
+// Changed 2026-10-10 (T034 of specs/001-self-hosted-club-site): the layout takes plain data (PostPageData and two
+// NavLinks) and no longer a collection entry, so the page is the same whether the post came from a file or from the
+// backend; the reading time arrives computed, by the same rule (src/lib/reading-time.ts).
+import type { PostPageData } from "../lib/posts";
+import type { NavLink } from "../lib/lists";
+// Changed 2026-10-12 with the two interface languages (src/i18n/lang.ts): ui (was t); the reading
+// time is built in both languages below.
+// import { t } from "../i18n/strings";
+import { ui } from "../i18n/strings";
+import type { Phrase } from "../i18n/lang";
+
+interface Props {
+  post: PostPageData;
+  headings: MarkdownHeading[];
+  prev: NavLink | null;
+  next: NavLink | null;
+}
+
+const { post, headings, prev, next } = Astro.props;
+const data = post;
+// Added 2026-10-12: "3 мин чтения" / "3 min read", one string per language.
+const timeLabel: Phrase = {
+  ru: `${post.readingMinutes} ${ui.reading_time.ru}`,
+  en: `${post.readingMinutes} ${ui.reading_time.en}`,
+};
+---
+
+<ArticleLayout
+  title={data.title}
+  description={data.description}
+  date={data.date}
+  updated={data.lastmod}
+  categories={data.categories}
+  tags={data.tags}
+  timeLabel={timeLabel}
+  shareTitle={data.shareTitle ?? data.title}
+  shareTexts={[data.shareDescription, data.description, data.summary]}
+  headings={headings}
+  prev={prev}
+  next={next}
+>
+  <slot />
+</ArticleLayout>

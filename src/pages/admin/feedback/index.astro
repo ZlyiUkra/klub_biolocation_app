@@ -1,0 +1,120 @@
+---
+// The panel's page for the messages of the feedback form, /admin/feedback/ (T107 of
+// specs/001-self-hosted-club-site; FR-033 to FR-036; the route is GET /api/admin/feedback, server/src/feedback/routes.ts).
+// Added 2026-10-13. A metr or an admin reads what visitors wrote, newest first, with the state of the mail that carried
+// each message to the club, so a message that never left (the provider was down, no recipient was set) is seen here
+// and is not lost.
+//
+// The page is the same shape as /admin/users/ and answers for the same reasons: markup only, src/scripts/admin-feedback.ts
+// asks the backend and fills it in, and every decision about who may read is the backend's.
+//
+// Decisions that would otherwise look like mistakes:
+// - Base.astro and the panel's navigation row (AdminNav.astro) and pager (AdminPager.astro), as the other pages have.
+// - The list carries ym-hide-content: the messages are visitors' own words, with names and addresses in them, and
+//   Yandex Metrika's Session Replay records the pages (METRIKA.md 3.1, the class Yandex documents for this).
+// - noindex, and the sitemap leaves /admin/ out; not in the menu, linked from the account page for a metr or an admin.
+// - A message is text: the script writes it with textContent, never as markup, and the stylesheet classes keep the
+//   visitor's line breaks (whitespace-pre-wrap).
+import Base from "../../../layouts/Base.astro";
+import AdminNav from "../../../components/AdminNav.astro";
+import AdminPager from "../../../components/AdminPager.astro";
+import { ui } from "../../../i18n/strings";
+import { adminUi } from "../../../i18n/admin";
+import T from "../../../components/T.astro";
+// Added 2026-10-13: the search field's placeholder and label are in both languages (langAttrs).
+import { langAttrs } from "../../../i18n/lang";
+
+// The classes of the search field and its button, the ones /admin/posts/ uses (bg-[#ffffff] and not bg-white:
+// custom.css paints every .bg-white white with !important, which would keep the field white in the dark theme).
+const field =
+  "w-full rounded border border-gray-300 bg-[#ffffff] p-2.5 text-sm text-gray-800 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200 dark:focus:border-blue-500 dark:focus:ring-blue-500";
+const secondary =
+  "rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 transition-opacity hover:opacity-80 disabled:opacity-50 dark:border-slate-600 dark:text-gray-200";
+
+// The page answers 404, not a redirect, to anyone who is neither a metr nor an admin, a visitor with no session
+// included (the owner's rule for the panel, T070; the API says the same). The viewer is read from the session by
+// src/middleware.ts, so this is decided on the server before any markup is sent.
+const { status } = Astro.locals.viewer;
+if (status !== "metr" && status !== "admin") return Astro.rewrite("/404");
+---
+
+<Base title={ui.admin_feedback_title} noindex>
+  <section class="mx-auto max-w-3xl">
+    <AdminNav current="feedback" />
+    <h1 class="mb-6 text-2xl font-bold"><T s={ui.admin_feedback_title} /></h1>
+    <p
+      id="feedback-status"
+      class="mb-4 text-sm"
+      role="status"
+      aria-live="polite"
+    >
+      <T s={ui.auth_loading} />
+    </p>
+    <noscript>
+      <p class="text-sm"><T s={adminUi.feedback_noscript} /></p>
+    </noscript>
+
+    <div id="feedback-box" hidden>
+      {
+        /* Added 2026-10-13 (the owner's order after T107): the search of the list, the form the posts' page has. The
+        text typed is a person's name or address, so the field carries ym-disable-keys as the users' search does. */
+      }
+      <form id="feedback-search" class="mb-4 flex flex-wrap gap-3">
+        <input
+          id="feedback-query"
+          type="search"
+          class:list={[field, "ym-disable-keys min-w-0 flex-1"]}
+          {...langAttrs({
+            placeholder: adminUi.feedback_search,
+            "aria-label": adminUi.feedback_search,
+          })}
+          autocomplete="off"
+        />
+        <button type="submit" class={secondary}>
+          <T s={adminUi.feedback_find} />
+        </button>
+      </form>
+      <p
+        id="feedback-count"
+        class="mb-2 text-xs text-gray-500 dark:text-slate-400"
+      >
+      </p>
+      <ul
+        id="feedback-list"
+        class="ym-hide-content divide-y divide-gray-200 border-y border-gray-200 dark:divide-slate-700 dark:border-slate-700"
+      >
+      </ul>
+      <AdminPager id="feedback-pager" label={adminUi.feedback_pages} />
+    </div>
+
+    <template id="feedback-row">
+      <li class="py-4">
+        <p class="font-medium">
+          <span data-name></span>
+          <span
+            data-topic
+            class="ml-2 rounded bg-gray-100 px-2 py-0.5 text-xs font-normal text-gray-600 dark:bg-slate-700 dark:text-gray-300"
+            hidden></span>
+        </p>
+        <p data-contact class="text-xs text-gray-500 dark:text-slate-400"></p>
+        <p data-received class="text-xs text-gray-500 dark:text-slate-400"></p>
+        <p
+          data-body
+          class="mt-2 whitespace-pre-wrap break-words text-sm text-gray-800 dark:text-gray-200"
+        >
+        </p>
+        <p data-mail class="mt-2 text-xs text-gray-500 dark:text-slate-400"></p>
+        <p data-network class="text-xs text-gray-500 dark:text-slate-400"></p>
+      </li>
+    </template>
+
+    <p class="mt-6 text-xs text-gray-500 dark:text-slate-400">
+      <T s={adminUi.feedback_footnote} />
+    </p>
+  </section>
+</Base>
+
+<script>
+  // The panel's script; its header says what it does and why.
+  import "../../../scripts/admin-feedback";
+</script>

@@ -1,0 +1,46 @@
+---
+// One list split by year, with the navigation of both levels: the year switcher above the
+// list and the page buttons below it. Added 2026-09-19 evening, asked for by the owner - "a
+// component for choosing the year, and inside it, for each year, a component that pages
+// through that year" - so that /posts/, the tag pages and the category pages behave the same
+// way. The markup of the list itself is the caller's, passed in the slot: CardList.astro for
+// the Posts list and the categories, the tag route for the tags; the two keep their own cards
+// (list.html's and tag.html's) for now, see PAGINATION.md, section 5.
+//
+// On a static site the nesting lives in the addresses, not in any state on the page:
+// /tags/hugo/ is the newest year's first page, /tags/hugo/2025/ the first page of 2025 and
+// /tags/hugo/2025/page/2/ its second page. The route gets those from paginateByYear() in
+// lib/posts.ts and passes one of them here; the switcher and the buttons are YearSwitcher.astro
+// and Pagination.astro, each with its own rule for many entries.
+//
+// The margins are list.html's: the switcher sits in the h1's mb-8, the buttons get mt-12. The
+// tag pages had mt-10 from tag.html before this component, so their buttons moved down by 8px.
+//
+// To undo the whole "every list by year" change, revert the commit that added this file:
+// nothing else depends on it.
+// lib/lists.ts since 2026-09-22, when the list helpers left lib/posts.ts so that posts and
+// videos stay apart and share only what is common (VIDEO-PAGE.md, section 4).
+import type { ListPage, YearLink } from "../lib/lists";
+import YearSwitcher from "./YearSwitcher.astro";
+import Pagination from "./Pagination.astro";
+
+interface Props {
+  /** The page shown; its items are rendered by the caller, in the slot. */
+  page: ListPage<unknown>;
+  /** Every year of the list, newest first, from paginateByYear(). */
+  years: YearLink[];
+  /** The year shown; undefined only on the own address of a list with no posts. */
+  currentYear: string | undefined;
+}
+
+const { page, years, currentYear } = Astro.props;
+---
+
+{currentYear && <YearSwitcher years={years} currentYear={currentYear} />}
+<slot />
+<Pagination
+  class="mt-12"
+  prevUrl={page.prevUrl}
+  nextUrl={page.nextUrl}
+  numbers={page.numbers}
+/>

@@ -1,0 +1,491 @@
+---
+// The admin panel for videos, /admin/videos/. Added 2026-10-12 (T175 of specs/001-self-hosted-club-site) at the owner's
+// request: a video is worked out like a post, in the browser, not left to Markdown files and commands.
+//
+// The page is markup only; src/scripts/admin-videos.ts asks the club's own backend, /api/admin/videos, with the cookie
+// the browser holds, and fills it in (contracts/http-api.md, "Posts and videos in the panel"). It answers 404 to anyone
+// who is neither a metr nor an admin, as /admin/posts/ and /admin/users/ do.
+//
+// Decisions that would otherwise look like mistakes:
+// - The same shell as /admin/posts/ (Base.astro, the field and button class lists, no style block, every element the
+//   script fills present in the markup), and a form of its own: the two entries share code only on plain data (the
+//   rule of VIDEO-PAGE.md section 4), so this page is not "the posts page with a flag".
+// - A free video needs its link when it is created; a file is a replacement of a link, never the first source (the
+//   server's rule, rules.ts). So the creation form has the provider and the identifier, and the source section of an
+//   existing video has the link and the file, each acting at once and not through the form's save button: the link is
+//   one request, the upload is another, and neither needs the text to be saved with them.
+// - The link of a paid lecture was write-only; since 2026-10-12 (the owner's order) the field shows the saved link or
+//   identifier of every video, to read and to change, in this panel's answers only.
+// - Copy button (since 2026-10-12): the server makes the copy, taking the link or file of the original, as a draft.
+// - bg-[#ffffff] in the fields, not bg-white (custom.css paints every .bg-white white with !important).
+import Base from "../../../layouts/Base.astro";
+import AdminNav from "../../../components/AdminNav.astro";
+import AdminPager from "../../../components/AdminPager.astro";
+import { ui } from "../../../i18n/strings";
+import { adminUi } from "../../../i18n/admin";
+import { langAttrs } from "../../../i18n/lang";
+import T from "../../../components/T.astro";
+import AdminImages from "../../../components/AdminImages.astro";
+import { site } from "../../../config";
+
+const field =
+  "w-full rounded border border-gray-300 bg-[#ffffff] p-2.5 text-sm text-gray-800 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200 dark:focus:border-blue-500 dark:focus:ring-blue-500";
+const label = "mb-1 block text-sm text-gray-500 dark:text-slate-400";
+const error = "mt-1 text-xs text-red-600 dark:text-red-400";
+const primary =
+  "rounded bg-blue-600 px-4 py-2 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-50";
+const secondary =
+  "rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 transition-opacity hover:opacity-80 disabled:opacity-50 dark:border-slate-600 dark:text-gray-200";
+
+// The page answers 404, not a redirect, to anyone who is neither a metr nor an admin (the viewer is read from the
+// session by src/middleware.ts, so this is decided before any markup is sent).
+const { status } = Astro.locals.viewer;
+if (status !== "metr" && status !== "admin") return Astro.rewrite("/404");
+
+// The statuses an entry can be restricted to: every named one but the guest and the blocked.
+const restrictable = site.admin.statuses.filter(
+  (s) => s !== "guest" && s !== "blocked",
+);
+---
+
+<Base title={ui.admin_videos_title} noindex>
+  <section class="mx-auto max-w-3xl">
+    <AdminNav current="videos" />
+    <h1 class="mb-6 text-2xl font-bold"><T s={ui.admin_videos_title} /></h1>
+    <p id="admin-status" class="mb-4 text-sm" role="status" aria-live="polite">
+      <T s={ui.auth_loading} />
+    </p>
+    <noscript>
+      <p class="text-sm"><T s={adminUi.videos_noscript} /></p>
+    </noscript>
+
+    <div id="admin-list" hidden>
+      <div class="mb-4 flex flex-wrap items-center gap-3">
+        <button id="admin-new" type="button" class={primary}>
+          <T s={adminUi.videos_new} />
+        </button>
+        <label class="flex items-center gap-2 text-sm">
+          <input id="admin-deleted" type="checkbox" />
+          <T s={adminUi.posts_show_deleted} />
+        </label>
+      </div>
+      <form id="admin-search" class="mb-4 flex flex-wrap gap-3">
+        <input
+          id="admin-query"
+          type="search"
+          class:list={[field, "min-w-0 flex-1"]}
+          {...langAttrs({ placeholder: adminUi.posts_search })}
+          autocomplete="off"
+        />
+        <button type="submit" class={secondary}>
+          <T s={adminUi.posts_find} />
+        </button>
+      </form>
+      <p
+        id="admin-count"
+        class="mb-2 text-sm text-gray-500 dark:text-slate-400"
+      >
+      </p>
+      <ul
+        id="admin-videos"
+        class="divide-y divide-gray-200 border-y border-gray-200 dark:divide-slate-700 dark:border-slate-700"
+      >
+      </ul>
+      <AdminPager id="admin-pager" label={adminUi.videos_pages} />
+    </div>
+
+    <template id="admin-video-row">
+      <li class="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
+        <div class="min-w-0 flex-1">
+          <a
+            data-title
+            class="font-medium text-blue-600 hover:underline dark:text-blue-400"
+          ></a>
+          <p class="text-xs text-gray-500 dark:text-slate-400">
+            <span data-date></span> · <span data-state></span> ·
+            <span data-source></span> · <span data-slug></span>
+          </p>
+        </div>
+        <button data-edit type="button" class={secondary}>
+          <T s={adminUi.posts_edit} />
+        </button>
+        <button data-copy type="button" class={secondary}>
+          <T s={adminUi.posts_copy} />
+        </button>
+        <button data-delete type="button" class={secondary}>
+          <T s={adminUi.posts_delete} />
+        </button>
+        <button data-restore type="button" class={secondary} hidden>
+          <T s={adminUi.posts_restore} />
+        </button>
+      </li>
+    </template>
+
+    <form id="admin-editor" class="space-y-4" novalidate hidden>
+      <h2 id="admin-editor-heading" class="text-xl font-bold"></h2>
+
+      <div>
+        <label for="admin-title" class={label}
+          ><T s={adminUi.field_title} /></label
+        >
+        <input
+          id="admin-title"
+          name="title"
+          type="text"
+          class={field}
+          {...langAttrs({ placeholder: adminUi.ph_title })}
+        />
+        <p data-error-for="title" class={error} hidden></p>
+      </div>
+
+      <div>
+        <label for="admin-slug" class={label}>
+          <T s={adminUi.field_slug} />
+        </label>
+        <input
+          id="admin-slug"
+          name="slug"
+          type="text"
+          class={field}
+          autocomplete="off"
+          spellcheck="false"
+          {...langAttrs({ placeholder: adminUi.ph_slug })}
+        />
+        <p data-error-for="slug" class={error} hidden></p>
+      </div>
+
+      <div>
+        <label for="admin-date" class={label}>
+          <T s={adminUi.field_date} />
+        </label>
+        <input
+          id="admin-date"
+          name="date"
+          type="datetime-local"
+          step="1"
+          class={field}
+        />
+        <p data-error-for="date" class={error} hidden></p>
+      </div>
+
+      <div>
+        <label for="admin-description" class={label}
+          ><T s={adminUi.field_description} /></label
+        >
+        <input
+          id="admin-description"
+          name="description"
+          type="text"
+          class={field}
+          {...langAttrs({ placeholder: adminUi.ph_description })}
+        />
+        <p data-error-for="description" class={error} hidden></p>
+      </div>
+
+      <div>
+        <label for="admin-tags" class={label}
+          ><T s={adminUi.field_tags} /></label
+        >
+        <input
+          id="admin-tags"
+          name="tags"
+          type="text"
+          class={field}
+          {...langAttrs({ placeholder: adminUi.ph_tags })}
+        />
+        <p data-error-for="tags" class={error} hidden></p>
+        <div data-terms-for="admin-tags" class="mt-2 flex flex-wrap gap-2">
+        </div>
+      </div>
+
+      <div>
+        <label for="admin-categories" class={label}>
+          <T s={adminUi.field_categories} />
+        </label>
+        <input
+          id="admin-categories"
+          name="categories"
+          type="text"
+          class={field}
+          {...langAttrs({ placeholder: adminUi.ph_categories })}
+        />
+        <p data-error-for="categories" class={error} hidden></p>
+        <div
+          data-terms-for="admin-categories"
+          class="mt-2 flex flex-wrap gap-2"
+        >
+        </div>
+      </div>
+
+      <label class="flex items-start gap-2 text-sm">
+        <input id="admin-paid" name="paid" type="checkbox" class="mt-1" />
+        <span><T s={adminUi.field_paid} /></span>
+      </label>
+      <p data-error-for="paid" class={error} hidden></p>
+
+      <div>
+        <label for="admin-available-until" class={label}>
+          <T s={adminUi.field_available_until} />
+        </label>
+        <input
+          id="admin-available-until"
+          name="availableUntil"
+          type="date"
+          class={field}
+        />
+        <p data-error-for="availableUntil" class={error} hidden></p>
+      </div>
+
+      <div>
+        <label for="admin-audience" class={label}>
+          <T s={adminUi.field_audience} />
+        </label>
+        <select id="admin-audience" name="audience" class={field}></select>
+        <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+          <T s={adminUi.audience_help} />
+        </p>
+        <p data-error-for="audience" class={error} hidden></p>
+      </div>
+
+      <fieldset
+        id="admin-restricted"
+        class="space-y-3 rounded border border-gray-300 p-3 dark:border-slate-700"
+        disabled
+      >
+        <legend class="px-1 text-sm text-gray-500 dark:text-slate-400">
+          <T s={adminUi.choose_who} />
+        </legend>
+        <div>
+          <p class={label}><T s={adminUi.field_statuses} /></p>
+          <div class="flex flex-wrap gap-x-4 gap-y-1">
+            {
+              restrictable.map((name) => (
+                <label class="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="statuses" value={name} />
+                  <T s={site.admin.statusNames[name]} />
+                </label>
+              ))
+            }
+          </div>
+          <p data-error-for="statuses" class={error} hidden></p>
+        </div>
+        <div>
+          <label for="admin-user-ids" class={label}>
+            <T s={adminUi.field_user_ids} />
+          </label>
+          <input
+            id="admin-user-ids"
+            name="userIds"
+            type="text"
+            class={field}
+            inputmode="numeric"
+            autocomplete="off"
+            {...langAttrs({ placeholder: adminUi.ph_user_ids })}
+          />
+          <p data-error-for="userIds" class={error} hidden></p>
+          <div class="mt-2 flex flex-wrap gap-3">
+            <input
+              id="admin-user-query"
+              type="search"
+              class:list={[field, "ym-disable-keys min-w-0 flex-1"]}
+              {...langAttrs({ placeholder: adminUi.users_query })}
+              autocomplete="off"
+            />
+            <button id="admin-user-find" type="button" class={secondary}>
+              <T s={adminUi.user_find} />
+            </button>
+          </div>
+          <ul
+            id="admin-user-results"
+            class="ym-hide-content mt-2 space-y-1 text-sm"
+          >
+          </ul>
+        </div>
+      </fieldset>
+
+      <label class="flex items-center gap-2 text-sm">
+        <input id="admin-teaser" name="teaser" type="checkbox" />
+        <T s={adminUi.field_teaser} />
+      </label>
+
+      <label class="flex items-center gap-2 text-sm">
+        <input id="admin-draft" name="draft" type="checkbox" />
+        <T s={adminUi.field_draft} />
+      </label>
+
+      <div>
+        <label for="admin-body" class={label}>
+          <T s={adminUi.field_video_body} />
+        </label>
+        <textarea
+          id="admin-body"
+          name="body"
+          rows="12"
+          class={field}
+          {...langAttrs({ placeholder: adminUi.ph_body })}></textarea>
+        <p data-error-for="body" class={error} hidden></p>
+      </div>
+
+      <div id="admin-members-box">
+        <label for="admin-members-only" class={label}>
+          <T s={adminUi.field_members_only} />
+        </label>
+        <textarea
+          id="admin-members-only"
+          name="membersOnly"
+          rows="6"
+          class={field}
+          {...langAttrs({ placeholder: adminUi.ph_members_only })}></textarea>
+        <p data-error-for="membersOnly" class={error} hidden></p>
+      </div>
+
+      {
+        /* Added 2026-10-12 (T143): upload a picture or paste an address; it goes where the cursor last was. */
+      }
+      <AdminImages />
+
+      <div id="admin-preview-box" hidden>
+        <p class={label}><T s={adminUi.preview_title} /></p>
+        <div
+          id="admin-preview"
+          class="prose max-w-none rounded border border-gray-300 p-4 dark:border-slate-700"
+        >
+        </div>
+      </div>
+
+      {
+        /* The source of the video. At creation: the provider and the identifier, which a free video needs at once and a
+        paid lecture may leave empty. Of a saved video: the state, the link and the file, each acting at once (the
+        script, setLink and upload); the form's save button never sends a source. */
+      }
+      <fieldset
+        class="space-y-3 rounded border border-gray-300 p-3 dark:border-slate-700"
+      >
+        <legend class="px-1 text-sm text-gray-500 dark:text-slate-400">
+          <T s={adminUi.source_heading} />
+        </legend>
+        {
+          /* Changed 2026-10-12: grey, as the owner asked - it is information about the saved video, not a warning. */
+        }
+        <p
+          id="admin-source-state"
+          class="text-sm text-gray-500 dark:text-slate-400"
+        >
+        </p>
+        <div>
+          <label for="admin-provider" class={label}>
+            <T s={adminUi.source_provider} />
+          </label>
+          <select id="admin-provider" class={field}></select>
+        </div>
+        <div>
+          <label for="admin-reference" class={label}>
+            <T s={adminUi.source_reference} />
+          </label>
+          <input
+            id="admin-reference"
+            type="text"
+            class={field}
+            autocomplete="off"
+            spellcheck="false"
+            {...langAttrs({ placeholder: adminUi.ph_reference })}
+          />
+          <p data-error-for="source" class={error} hidden></p>
+          {
+            /* Added 2026-10-12 (T175): where to get the address, for the host chosen above; the script fills it. */
+          }
+          <p
+            id="admin-reference-help"
+            class="mt-1 text-xs text-gray-500 dark:text-slate-400"
+          >
+          </p>
+          <p class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+            <T s={adminUi.source_set_hint} />
+          </p>
+          <p
+            id="admin-secret-note"
+            class="mt-1 text-xs text-gray-500 dark:text-slate-400"
+            hidden
+          >
+            <T s={adminUi.source_secret_note} />
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <button id="admin-set-link" type="button" class={secondary} hidden>
+            <T s={adminUi.source_set} />
+          </button>
+          <p
+            id="admin-after-save"
+            class="text-xs text-gray-500 dark:text-slate-400"
+          >
+            <T s={adminUi.source_after_save} />
+          </p>
+        </div>
+
+        <div id="admin-file-box" class="space-y-2" hidden>
+          <p class={label}><T s={adminUi.file_heading} /></p>
+          <p class="text-xs text-gray-500 dark:text-slate-400">
+            <T s={adminUi.file_help} />
+          </p>
+          <p id="admin-space" class="text-sm"></p>
+          <div class="flex flex-wrap items-center gap-3">
+            <input
+              id="admin-file"
+              type="file"
+              accept="video/mp4,.mp4"
+              class="min-w-0 text-sm"
+            />
+            <button id="admin-upload" type="button" class={secondary}>
+              <T s={adminUi.file_upload} />
+            </button>
+          </div>
+          <progress
+            id="admin-progress"
+            class="w-full"
+            max="100"
+            value="0"
+            hidden></progress>
+          <p
+            id="admin-upload-status"
+            class="text-sm"
+            role="status"
+            aria-live="polite"
+          >
+          </p>
+        </div>
+      </fieldset>
+
+      <p
+        id="admin-form-error"
+        class="text-sm text-red-600 dark:text-red-400"
+        role="alert"
+        hidden
+      >
+      </p>
+
+      <div class="flex flex-wrap gap-3">
+        <button id="admin-save" type="submit" class={primary}>
+          <T s={adminUi.posts_save} />
+        </button>
+        <button id="admin-preview-button" type="button" class={secondary}>
+          <T s={adminUi.posts_preview} />
+        </button>
+        <button id="admin-cancel" type="button" class={secondary}>
+          <T s={adminUi.posts_cancel} />
+        </button>
+      </div>
+    </form>
+
+    <template id="admin-term">
+      <button
+        type="button"
+        class="rounded-full border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:opacity-80 dark:border-slate-600 dark:text-slate-300"
+      ></button>
+    </template>
+  </section>
+</Base>
+
+<script>
+  // The panel's script; its header says what it does and why.
+  import "../../../scripts/admin-videos";
+</script>

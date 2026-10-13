@@ -1,0 +1,108 @@
+---
+import type { MarkdownHeading } from "astro";
+// Changed 2026-10-12 with the two interface languages (src/i18n/lang.ts): ui (was t), through T.
+// import { t } from "../i18n/strings";
+import { ui } from "../i18n/strings";
+import T from "./T.astro";
+// Changed 2026-09-22: tocHtml() became tocTree(), which returns the headings as data, and
+// TocList.astro renders them. See the note in src/lib/toc.ts for why the markup stopped being
+// built as a string here.
+import { tocTree } from "../lib/toc";
+import TocList from "./TocList.astro";
+
+interface Props {
+  headings: MarkdownHeading[];
+}
+
+const { headings } = Astro.props;
+const toc = tocTree(headings);
+
+// Changed 2026-09-16: Props are typed, and the button label reads t.table_of_contents, because
+// `t` in src/i18n/strings.ts is an object, not a function.
+// Changed in my-saved-work, merged 2026-09-17: the list is tocHtml() from src/lib/toc.ts, which
+// nests every heading by its level, instead of the earlier flat h2/h3 list with its own classes
+// (ARTICLE-PAGE-FIX.md, step 8).
+//
+// The caller decides whether to render this component at all (ArticleLayout.astro checks that
+// the post has headings). The check cannot live here: Prettier parses the markup of an Astro
+// expression as JSX, where Alpine's @click attribute is a syntax error, so wrapping everything
+// in an expression makes `prettier --check` fail on this file.
+//
+// Changed 2026-09-18: hidden from a 92rem (1472px) wide window up, by the toc-inline class and
+// the style block at the end of this file. From that width the table-of-contents sidebar in
+// src/layouts/Post.astro shows the same headings beside the article, so the page would otherwise
+// list them twice. Below it the sidebar is hidden and this one is the only table of contents, as
+// before. The newer hugo-theme-void, the reference for the sidebar, hides its inline table of
+// contents at the same width, under the same class name. It is a media query and not a Tailwind
+// class because this project's Tailwind 3 does not generate an arbitrary min-width variant in rem
+// (measured); see the note on the sidebar's style block in src/layouts/Post.astro.
+---
+
+<div class="toc-inline article-inner pt-6" x-data="{ open: false }">
+  <button
+    class="flex w-full items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200 dark:hover:bg-slate-700"
+    @click="open = !open"
+    aria-controls="toc-content"
+    :aria-expanded="open.toString()"
+  >
+    <span><T s={ui.table_of_contents} /></span>
+    <svg
+      x-show="!open"
+      xmlns="http://www.w3.org/2000/svg"
+      class="h-4 w-4"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+    >
+      <path
+        fill-rule="evenodd"
+        d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+        clip-rule="evenodd"></path>
+    </svg>
+    <svg
+      x-show="open"
+      xmlns="http://www.w3.org/2000/svg"
+      class="h-4 w-4"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+    >
+      <path
+        fill-rule="evenodd"
+        d="M5 9a1 1 0 000 2h10a1 1 0 100-2H5z"
+        clip-rule="evenodd"></path>
+    </svg>
+  </button>
+  <div
+    id="toc-content"
+    x-cloak
+    x-show="open"
+    x-transition
+    class="mt-3 rounded-md border border-gray-100 bg-white p-4 text-sm leading-relaxed"
+  >
+    {
+      /* Changed 2026-09-22: was `set:html={toc}` with a string of markup built in lib/toc.ts. The
+      <nav id="TableOfContents"> wrapper that string carried is written out here now, because the
+      id is what the theme's CSS and the sidebar script look for; TocList.astro renders one list at
+      any depth and does not know it is the outermost one. An article with no headings renders no
+      nav at all, as before - the caller already checks for that, and tocTree() would return an
+      empty list anyway. */
+    }
+    <div class="prose prose-sm max-w-none">
+      {
+        toc.length > 0 && (
+          <nav id="TableOfContents">
+            <TocList nodes={toc} />
+          </nav>
+        )
+      }
+    </div>
+  </div>
+</div>
+
+<style>
+  /* Added 2026-09-18: see the note in the frontmatter. */
+  @media (min-width: 92rem) {
+    .toc-inline {
+      display: none;
+    }
+  }
+</style>

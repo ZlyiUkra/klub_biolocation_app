@@ -1,0 +1,360 @@
+---
+import { requestedPath } from "../lib/request-path";
+import { site } from "../config";
+// Added 2026-10-12 with the two interface languages (src/i18n/lang.ts): every item's name is a
+// Phrase now (site.menu), printed through T, and the panel's nav label is in both languages.
+import { ui } from "../i18n/strings";
+import { langAttrs } from "../i18n/lang";
+import T from "./T.astro";
+
+interface Props {
+  /**
+   * "bar" is the horizontal row in the header, which is what Hugo renders.
+   * "panel" is the stacked list inside the drop-down, added on 2026-09-09 for narrow
+   * viewports; it has no counterpart in Hugo. Both variants live here so that the
+   * aria-current rules below - which encode Hugo's semantics - have exactly one home.
+   */
+  variant?: "bar" | "panel";
+}
+
+const { variant = "bar" } = Astro.props;
+
+// Changed 2026-10-10 (T034): the address asked for, not the alias a year list is rendered under (src/lib/request-path.ts).
+const path = requestedPath(Astro.url.pathname, Astro.locals.yearList === true);
+
+// Hugo marks the entry that is the current page with IsMenuCurrent (`aria-current="page"`)
+// and the entry whose section contains the current page with HasMenuCurrent
+// (`aria-current="true"`). Checked against the Hugo build for every route: only
+// /posts/<slug>/ ever produced an ancestor match, and taxonomy term pages (/tags/hugo/,
+// /categories/blog/) marked nothing at all.
+//
+// Changed 2026-09-19 evening, asked for by the owner: the menu is to show which section the
+// reader is in, so every entry but Home is the ancestor of the pages under its address -
+// Posts of /posts/2026/ and of an article, Tags of /tags/hugo/, Categories of
+// /categories/blog/. That goes beyond Hugo's HasMenuCurrent, which ignores taxonomy terms.
+// Home matches only the home page itself.
+function ariaCurrent(url: string): "page" | "true" | undefined {
+  if (path === url) return "page";
+  if (url !== "/" && path.startsWith(url)) return "true";
+  return undefined;
+}
+
+// The Hugo partial also merges an "active font-bold" / "ancestor font-semibold" class into
+// the same link, which produces a SECOND class attribute next to the literal one:
+//   <a class="px-2 py-1 ..." aria-current="page" class="active font-bold" href="/">
+// Browsers keep the first class attribute and drop the second, and neither `.active` nor
+// `.ancestor` is styled anywhere in the theme - so on the live Hugo site the current menu
+// item is NOT bold, and until 2026-09-19 this port left the classes out to render the same.
+//
+// Changed 2026-09-19 evening, asked for by the owner: the classes are merged into the one
+// class attribute now, through class:list, so the current page's entry is bold and its
+// section's entry semibold - what the theme's author wrote and never saw. `active` and
+// `ancestor` stay as hooks. The weight alone turned out too subtle - the owner did not
+// notice it - so both states also take the colours of the year switcher's highlighted
+// button (YearSwitcher.astro), the site's existing "you are here" look: blue-50 with
+// blue-700 text, slate-700 with blue-300 in dark mode. The link's own hover classes still
+// win on hover. See README, "The active menu item is highlighted", and MIGRATION-PLAN.md
+// section 9.
+const currentClasses = (current: "page" | "true" | undefined) => [
+  current === "page" && "active font-bold",
+  current === "true" && "ancestor font-semibold",
+  current && "bg-blue-50 text-blue-700 dark:bg-slate-700 dark:text-blue-300",
+];
+
+// Two changes to the Hugo class list in the "bar" variant, both inert at 768px and up, which
+// is where the parity screenshots are taken:
+//
+// 1. `hidden sm:flex` on the nav, so the bar disappears below 640px and the hamburger in
+//    Header.astro takes over.
+// 2. The size bumps moved from `sm:` to `md:` - `md:space-x-6` on the list, `md:text-lg` on
+//    the items, `md:px-3 md:py-2` on the links. Hugo grows the menu at 640px, but between
+//    640px and 767px the grown row plus the title plus the theme toggle no longer fit: at
+//    700px the row reached 680px against 661px of usable width, and because the header is
+//    `fixed` the excess could not even be scrolled to - the theme toggle was simply cut off.
+//    Keeping the compact sizes until 768px makes the row fit with room to spare, and at 768px
+//    and up it is exactly what Hugo renders, `md:space-x-6` included. The owner chose to keep
+//    the hamburger threshold at 640px, so this is what closes that band instead.
+//
+// Changed again on 2026-09-22, because the band moved rather than closed. Two things grew since
+// that note was written: Video made a sixth menu item, and the logo is now painted at every width
+// instead of only below 640px. Measured in a headless browser on the built page, row width
+// against usable width: at a 656px viewport the row wanted 663px against 608px, and at 806px -
+// just above the old md: threshold, where the bumps make everything bigger - it wanted 819px
+// against 758px. Both spill to the right, and the header is `fixed`, so the end of the row and
+// the theme toggle with it simply cannot be reached.
+//
+// Three changes, all of them inert at 1024px and up, where the row is again exactly what Hugo
+// renders:
+//
+// 1. The size bumps moved from `md:` to `lg:`. The compact row now holds from 640px to 1024px,
+//    which is the whole band where six items, the title, the logo and the switch have to share a
+//    line.
+// 2. `space-x-2` became `space-x-1` below that threshold: five gaps, 4px each.
+// 3. The links are `px-1.5` instead of `px-2` below it: six links, 4px each.
+//
+// Header.astro trims the wrapper's side padding over the same band for the same reason. Together
+// they take about 68px out of a row that was 55px too wide at its worst, and every width from
+// 640px to 1600px was re-measured afterwards.
+const isPanel = variant === "panel";
+
+// Added 2026-09-30 at the owner's request: the Account item carries data-menu-account in both
+// variants, by which the script at the bottom finds it, so that a click on it while the account
+// page is open loads nothing and brings Clerk's card back to its first tab
+// (src/scripts/same-page.ts). No other item is affected.
+const accountMark = (url: string) =>
+  url === site.auth.account ? "" : undefined;
+---
+
+{
+  isPanel ? (
+    <nav class="w-full" {...langAttrs({ "aria-label": ui.menu_label })}>
+      <ul class="flex list-none flex-col">
+        {site.menu.map((item) => (
+          <li
+            class:list={[
+              "text-base text-gray-600 dark:text-gray-200",
+              item.url === site.auth.account && "members-only",
+            ]}
+          >
+            <a
+              class:list={[
+                "block rounded px-2 py-3 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-slate-800 dark:hover:text-white",
+                ...currentClasses(ariaCurrent(item.url)),
+              ]}
+              aria-current={ariaCurrent(item.url)}
+              data-menu-account={accountMark(item.url)}
+              href={item.url}
+            >
+              {/* Changed 2026-10-12: both languages (item.name is a Phrase). */}
+              <T s={item.name} />
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  ) : (
+    // <nav class="hidden w-full justify-end whitespace-nowrap sm:flex">
+    //   <ul class="flex list-none flex-row items-center space-x-1 py-2 lg:space-x-3">
+    //     {site.menu.map((item) => (
+    //       <li
+    //         class:list={[
+    //           "text-base text-gray-600 hover:text-gray-900 dark:text-gray-200 dark:hover:text-white lg:text-lg",
+    //           item.url === site.auth.account && "members-only",
+    //         ]}
+    //       >
+    //         <a
+    //           class:list={[
+    //             "rounded px-1.5 py-1 transition-colors hover:bg-gray-100 dark:hover:bg-slate-800 lg:py-2",
+    //             ...currentClasses(ariaCurrent(item.url)),
+    //           ]}
+    //           aria-current={ariaCurrent(item.url)}
+    //           href={item.url}
+    //         >
+    //           {item.name}
+    //         </a>
+    //       </li>
+    //     ))}
+    //   </ul>
+    // </nav>
+    // )
+    // }
+
+    // Changed 2026-09-28, the colleague's report that the menu does not scroll between 640px and
+    // 708px: min-w-0 on the nav and on the scrolling div. Both are flex items, and a flex item's
+    // min-width is auto, so each grew to the full width of the list and there was never anything
+    // to scroll; with more items the menu pushed the logo and the icons out of the header instead
+    // (measured in headless Edge with three extra items; Header.astro gives its right-hand group
+    // the same min-w-0). With today's items the menu still fits at those widths, so nothing moves
+    // until it does not. scrollbar-none is written plainly now: the variant
+    // min-[640px]:max-[708px]:scrollbar-none produced nothing, because Tailwind does not know the
+    // class, so the default scrollbar would have shown; the style block below hides it, and only
+    // this band scrolls anyway.
+    //
+    // Changed 2026-09-30, the colleague's question whether the scroll works at all, since in
+    // DevTools nothing moved. Measured in headless Edge: with today's items (six for a guest, seven
+    // for a member) the row fits at every width from 640px, so there is nothing to scroll and
+    // nothing can move - a scroller only scrolls what it hides. With three extra items it did scroll
+    // at 700px, but at 760px, 900px and 1100px, outside the 640-708px band, the row spilled over the
+    // icons instead. Three changes:
+    // 1. overflow-x-auto at every width where this bar shows (it is hidden below 640px), so a row
+    //    that does not fit scrolls wherever that happens; while it fits nothing changes.
+    // 2. The scroll line is shown by the script below only while the row really overflows. It was
+    //    shown across the whole band, where it promised a scroll that was not there.
+    // 3. The line moved out of the scrolling div into the nav, which is relative now for it. An
+    //    absolutely placed child of a scroll container scrolls with the content, so the line slid
+    //    away as the menu was scrolled; while the row overflows, the div is exactly as wide as the
+    //    nav, so the line stays where it was drawn.
+    //
+    // Changed 2026-09-30, from a Tailwind 3.4 audit the owner ordered: redundant classes out, the
+    // band written the documented way. The band's flex on the div repeated the base flex, the
+    // band's flex-nowrap on the list is what a flex row does anyway, and h-[2px] on the line is
+    // h-0.5. The band itself reads sm:max-[708px] now, the same 640px to 708px ("Responsive
+    // Design", targeting a breakpoint range). scrollbar-none became a real utility in
+    // tailwind.config.cjs; the scoped rules at the bottom of this file are gone.
+    //
+    // Changed later on 2026-09-30, at the owner's word: point 2 above now holds outside a band from
+    // 640px to 793px only. Inside it the line is shown all the time and the row springs a little
+    // under a finger, the colleague's original idea; the script below explains how. The band was
+    // hers, 640px to 708px, and the owner widened it to 793px inclusive; the list's band classes
+    // (w-max and the side padding) moved with it.
+    <nav class="relative hidden w-full min-w-0 justify-end whitespace-nowrap sm:flex">
+      <div
+        data-menu-scroller
+        class="relative flex min-w-0 items-center justify-between overflow-x-auto scrollbar-none"
+      >
+        <ul class="flex list-none flex-row items-center space-x-1 py-2 sm:max-[793px]:w-max sm:max-[793px]:px-2 lg:space-x-3">
+          {site.menu.map((item) => (
+            <li
+              class:list={[
+                "text-base text-gray-600 hover:text-gray-900 lg:text-lg dark:text-gray-200 dark:hover:text-white",
+                item.url === site.auth.account && "members-only",
+              ]}
+            >
+              <a
+                class:list={[
+                  "rounded px-1.5 py-1 transition-colors hover:bg-gray-100 lg:py-2 dark:hover:bg-slate-800",
+                  ...currentClasses(ariaCurrent(item.url)),
+                ]}
+                aria-current={ariaCurrent(item.url)}
+                data-menu-account={accountMark(item.url)}
+                href={item.url}
+              >
+                {/* Changed 2026-10-12: both languages (item.name is a Phrase). */}
+                <T s={item.name} />
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <span
+        data-menu-scroll-line
+        class="pointer-events-none absolute bottom-0 left-0 right-0 hidden h-0.5 bg-gray-400/20 backdrop-blur-[3px]"
+      />
+    </nav>
+  )
+}
+
+<script>
+  // Added 2026-09-30: shows the scroll line under the header menu only while the row is wider than
+  // the room it has (see the note above the bar). The ResizeObserver catches every change of either
+  // width - a resized window, the web font arriving, the Account item appearing for a member. Astro
+  // runs a bundled script once per page, although this component renders twice (bar and panel).
+  //
+  // Changed later on 2026-09-30, the owner's choice of the colleague's original idea (option B):
+  // between 640px and 793px inclusive - her band of 640px to 708px, widened by the owner - the row
+  // answers a finger even when every item fits. A
+  // native scroller cannot move a row that has nothing hidden, so the script does it: a horizontal
+  // drag pulls the list a little way with growing resistance (at most `reach` px), and on release
+  // it springs back. Only for a finger (pointerType "touch"), only in the band, only while the row
+  // fits - when it overflows the ordinary scroll is there instead - and not for a visitor who asked
+  // the system for reduced motion. In the band the line under the menu is shown all the time, as in
+  // her version, as the hint that the row moves; outside it the line still appears only while the
+  // row overflows.
+  // Added later on 2026-09-30, for the Account item at the end of this script.
+  import { stayOnPage } from "../scripts/same-page";
+  const scroller = document.querySelector("[data-menu-scroller]");
+  const line = document.querySelector("[data-menu-scroll-line]");
+  const list = scroller?.firstElementChild;
+  if (
+    scroller instanceof HTMLElement &&
+    line instanceof HTMLElement &&
+    list instanceof HTMLElement
+  ) {
+    // Tailwind's sm:max-[793px], the band of the list's own classes above.
+    const band = window.matchMedia("(min-width: 640px) and (max-width: 793px)");
+    const stillPlease = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const grab = 6; // px a finger travels before a touch counts as a drag, so a tap stays a tap
+    const reach = 15; // px the row can be pulled at most
+    let overflowing = false;
+    const springs = () => band.matches && !overflowing && !stillPlease.matches;
+    const update = () => {
+      // A pixel of slack, so that a fractional width rounded up never shows the line on its own.
+      overflowing = scroller.scrollWidth - scroller.clientWidth > 1;
+      line.classList.toggle("hidden", !overflowing && !band.matches);
+      // The nav is a few pixels wider than the row when the row fits (5px to 11px, measured), so
+      // the line starts where the row starts, as it did in the colleague's version; 0 when the row
+      // overflows, because the row then fills the nav.
+      line.style.left = `${scroller.offsetLeft}px`;
+      // pan-y leaves the vertical page scroll to the browser and hands the sideways move to the
+      // script; without it the browser may claim the gesture and cancel the pointer.
+      scroller.style.touchAction = springs() ? "pan-y" : "";
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(scroller);
+    observer.observe(list);
+    // The nav too: when the title beside it gives way, the row keeps its size but moves.
+    if (line.parentElement) observer.observe(line.parentElement);
+    band.addEventListener("change", update);
+    stillPlease.addEventListener("change", update);
+    update();
+
+    let drag: { id: number; x: number; y: number; moved: boolean } | null =
+      null;
+    // A drag ends with the finger on a link, which the browser then clicks; that click is dropped.
+    let swallowUntil = 0;
+    scroller.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "touch" || !springs()) return;
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+    });
+    scroller.addEventListener("pointermove", (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const dx = e.clientX - drag.x;
+      const dy = e.clientY - drag.y;
+      if (!drag.moved) {
+        // A mostly vertical move is the page scrolling; the row stays out of it.
+        if (Math.abs(dy) > grab && Math.abs(dy) >= Math.abs(dx)) {
+          drag = null;
+          return;
+        }
+        if (Math.abs(dx) <= grab) return;
+        drag.moved = true;
+        list.style.transition = "none";
+      }
+      // tanh gives the resistance: close to the finger at first, never past `reach`.
+      list.style.transform = `translateX(${reach * Math.tanh(dx / (reach * 4))}px)`;
+    });
+    const letGo = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      if (drag.moved) {
+        swallowUntil = performance.now() + 400;
+        // An ease that overshoots a little, for the spring.
+        list.style.transition =
+          "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)";
+        list.style.transform = "";
+      }
+      drag = null;
+    };
+    scroller.addEventListener("pointerup", letGo);
+    scroller.addEventListener("pointercancel", letGo);
+    scroller.addEventListener(
+      "click",
+      (e) => {
+        if (performance.now() < swallowUntil) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      },
+      true,
+    );
+  }
+
+  // Added later on 2026-09-30, at the owner's request: on the account page the Account item, in the
+  // bar and in the panel, loads nothing and brings Clerk's card back to its first tab, as the
+  // header's icon does (src/scripts/same-page.ts). site.ts closes the panel after such a click,
+  // since no new page does it.
+  document.querySelectorAll("[data-menu-account]").forEach((account) => {
+    if (!(account instanceof HTMLAnchorElement)) return;
+    account.addEventListener("click", (event) => {
+      stayOnPage(event, account);
+    });
+  });
+</script>
+
+<style>
+  /* Скрытие дефолтного скроллбара */
+  /* Moved 2026-09-30: the two rules that stood here, hiding the scrollbar of .scrollbar-none, are
+     the scrollbar-none utility in tailwind.config.cjs now, where Tailwind knows the class and lets
+     it take variants. The note above is kept, as every comment in this project is; the block
+     emits nothing. */
+</style>

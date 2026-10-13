@@ -1,0 +1,19 @@
+{
+  // Added 2026-09-18. The Astro presets set compilerOptions only: no include, no exclude. TypeScript
+  // then falls back to its default, which is everything under the project root except node_modules,
+  // and allowJs from the preset pulls in .js files as well. The built bundles in dist/ were therefore
+  // type-checked on every run. Measured on this project: 21 of the 28 hints astro check reported came
+  // from two minified files there, and the editor's language server loaded the same files. "exclude"
+  // keeps the build out of the program; "include" is what Astro's own templates generate, so the
+  // content-collection types in .astro/ are always part of it.
+  //
+  // Changed again 2026-09-18: the merge e5bafa9 brought this file back without the note above and
+  // with a comma after the last entry. TypeScript accepts that, but Prettier rewrites it, so
+  // "npm run check" failed on its formatting step. The comma is gone and the note is back.
+  "extends": "astro/tsconfigs/strict",
+  "include": [".astro/types.d.ts", "**/*"],
+  // Added 2026-10-10 (T002 of specs/001-self-hosted-club-site): server/ is the backend, a TypeScript project of its
+  // own with its own tsconfig.json (NodeNext, emits to server/dist). Left in this program, astro check would
+  // type-check it under Astro's bundler settings and report errors that do not exist there.
+  "exclude": ["dist", "server"]
+}

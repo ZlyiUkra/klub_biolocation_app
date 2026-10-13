@@ -1,0 +1,99 @@
+---
+// Previous, the page numbers and Next under a list of the admin panel: the posts of /admin/posts/
+// and the members of /admin/users/, 20 to a page (site.admin.pageSize). Added 2026-10-02 at the
+// owner's request ("paginate the posts and the users, 20 items, reusing the mechanism we have").
+//
+// The mechanism reused is the pager of the account card's "Устройства" page (account.astro and
+// src/scripts/account-devices.ts), which is in turn the site's Pagination.astro made of buttons: the
+// same container, the same Previous and Next with their chevrons, the same number buttons, the
+// current page as a span with aria-current, and the ellipsis. Buttons, not links, because these
+// pages exist only in the browser. Pagination.astro itself cannot serve: it renders links to pages
+// built at build time. The classes below are copied from account.astro's devices templates; change
+// the three together.
+//
+// The component owns the markup its script binds to (CLAUDE.md): src/scripts/admin-pager.ts finds
+// the buttons and the three templates inside the nav it is given, so a page may hold more than one
+// pager. The nav starts with the class `hidden`, which the script lifts only when there is more
+// than one page (a class, not the attribute, because `flex` beats the hidden attribute; the note
+// in account-devices.ts has the measurement).
+// Added 2026-10-12 with the two interface languages (src/i18n/lang.ts): the label is a Phrase, the
+// two buttons' words come from strings.ts, and the script writes the page labels in both
+// languages (admin-pager.ts).
+import type { Phrase } from "../i18n/lang";
+import { langAttrs } from "../i18n/lang";
+import { ui } from "../i18n/strings";
+import T from "./T.astro";
+
+interface Props {
+  // The nav's id, which the page script looks up.
+  id: string;
+  // What a screen reader announces for the nav.
+  // Changed 2026-10-12: a Phrase, both languages (it was a string).
+  label: Phrase;
+}
+
+const { id, label } = Astro.props;
+const button =
+  "flex items-center rounded-md bg-white px-3 py-1 text-sm text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-40 dark:bg-slate-900 dark:text-gray-300 dark:hover:bg-slate-800";
+---
+
+<nav
+  id={id}
+  {...langAttrs({ "aria-label": label })}
+  class="mt-4 flex hidden flex-wrap items-center justify-between gap-y-3"
+>
+  <button type="button" data-pager-prev class={button}>
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      class="mr-1 h-4 w-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      aria-hidden="true"
+    >
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        d="M15 19l-7-7 7-7"></path>
+    </svg>
+    {/* Changed 2026-10-12: both languages (it read "Назад"; "Далее" below). */}
+    <T s={ui.pagination_previous} />
+  </button>
+  <div data-pager-numbers class="flex flex-wrap justify-center gap-1"></div>
+  <button type="button" data-pager-next class={button}>
+    <T s={ui.pagination_next} />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      class="ml-1 h-4 w-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      aria-hidden="true"
+    >
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        d="M9 5l7 7-7 7"></path>
+    </svg>
+  </button>
+  <template data-pager-number>
+    <button
+      type="button"
+      class="rounded-md bg-white px-3 py-1 text-sm text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:bg-slate-900 dark:text-gray-300 dark:hover:bg-slate-800"
+    ></button>
+  </template>
+  <template data-pager-current>
+    <span
+      aria-current="page"
+      class="rounded-md bg-blue-50 px-3 py-1 text-sm text-blue-700 shadow-sm dark:bg-slate-700 dark:text-blue-300"
+    ></span>
+  </template>
+  <template data-pager-gap>
+    <span
+      aria-hidden="true"
+      class="px-1 py-1 text-sm text-gray-500 dark:text-gray-400">&hellip;</span
+    >
+  </template>
+</nav>

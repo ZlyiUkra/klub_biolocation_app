@@ -1,0 +1,47 @@
+---
+// The Video menu item: /video/, /video/<year>/ and /video/<year>/page/<n>/, the colleague's
+// section of 2026-09-20 to 2026-09-22 (VIDEO-PAGE.md). The list is the Posts list's: the same
+// paginateByYear() in lib/lists.ts and the same CardList.astro, over Cards this route builds
+// from the videos with videoCard() in lib/video.ts - so the list code knows no collection, and
+// what differs, the card's address and its last line, is inside the card. Until 2026-09-22
+// the route had its own copies of the list code, a lib/video.ts of that shape and
+// VideoList.astro; see VIDEO-PAGE.md, section 4. The title is a literal, like "Posts" in
+// posts/[...page].astro.
+//
+// The rest parameter of this route is named `video`, after the file. Fixed on 2026-09-22
+// (VIDEO-PAGE.md, section 2): getStaticPaths() used to return `params: { page }`, copied from
+// the Posts route; Astro ignores a param the route does not declare, so every entry mapped to
+// /video/, the last one written - the oldest year - was what that page showed, and no year
+// page existed.
+//
+// The single videos are in ./[slug].astro, which also matches one segment after /video/; as
+// with the posts, no video's file name may be a year.
+import Base from "../../layouts/Base.astro";
+import CardList from "../../components/CardList.astro";
+// Changed 2026-10-10 (T034): from the backend, as /posts/ now is.
+// Changed 2026-10-10 (T162): the backend cuts the list by year and by page; this route asks for the one page its
+// address names (getListRoute() in lib/terms.ts) and no longer receives every card to cut itself.
+import { getListRoute } from "../../lib/terms";
+
+// Changed 2026-10-12 with the two interface languages: the section's name in both, from
+// site.sections in src/config.ts (it was the literal "Video").
+import { site } from "../../config";
+const title = site.sections.video;
+
+const context = { cookie: Astro.request.headers.get("cookie") ?? undefined };
+// `Astro.locals.yearList` is set by src/middleware.ts when /<section>/<year>/ was passed here under the alias of its
+// first page (see there); then "2025/page/1" is the first page of 2025, whose param is "2025".
+const param = Astro.locals.yearList
+  ? Astro.params.video?.replace(new RegExp("/page/1$"), "")
+  : Astro.params.video;
+const entry = await getListRoute({ kind: "video" }, "/video/", param, context);
+if (entry === undefined) return Astro.rewrite("/404");
+const { page, years, year } = entry;
+
+// Changed 2026-10-10 (T034 of specs/001-self-hosted-club-site): the `prerender = true` line that T032 put here is gone.
+// Rendered on demand from the backend, one request each.
+---
+
+<Base title={title}>
+  <CardList title={title} page={page} years={years} currentYear={year} />
+</Base>

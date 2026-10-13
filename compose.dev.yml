@@ -1,0 +1,39 @@
+# Development database for the self-hosted rewrite (T005 of specs/001-self-hosted-club-site).
+#
+# Start it with:  docker compose -f compose.dev.yml up -d db
+# Stop it with:   docker compose -f compose.dev.yml down        (the data volume stays)
+# Remove data:    docker compose -f compose.dev.yml down -v     (asks nothing: it deletes the volume)
+#
+# Decisions that would otherwise look like mistakes:
+# - The image is pinned by digest, not only by tag. The digest is the one the registry returned on 2026-10-10 for
+#   postgres:16-bookworm (the multi-platform index). Refresh it deliberately, with the tag and the date in this note.
+# - The data volume is mounted at /var/lib/postgresql/data, as the image's documentation says: a mount at the parent
+#   path does not persist data when the container is re-created.
+# - shm_size is the 128mb the image's own compose example sets.
+# - The port is published on the loopback address only, and on 5433 so that it does not collide with a PostgreSQL
+#   already installed on this machine. Production publishes no database port at all (plan, phase 8).
+# - The password is never written here: it comes from POSTGRES_PASSWORD in the git-ignored .env file, and the compose
+#   run fails with a clear message when it is missing.
+
+services:
+  db:
+    image: postgres:16-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4
+    restart: "no"
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: klub
+      POSTGRES_DB: klub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - klub_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U klub -d klub"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  klub_pgdata:

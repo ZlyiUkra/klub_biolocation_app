@@ -1,0 +1,195 @@
+---
+// The admin panel for the members' statuses, /admin/users/. Added 2026-10-02 at the owner's request
+// (the status model: guest, student, expert, master, metr, admin, blocked; src/config.ts,
+// site.admin). The design is the consilium verdict .specify/consilium/2026-10-02-admin-posts.md,
+// and ADMIN.md is the how-to.
+//
+// A metr or an admin finds a member and gives them a status. The page is markup only;
+// src/scripts/admin-users.ts loads Clerk, asks the status service (workers/statuses/) and fills it
+// in. Every rule - who may change whom, to what - is decided by the service; the page only shows
+// the choices the service says the visitor has.
+// (Changed 2026-10-11, T071 and T070: the script asks the club backend, /api/admin/users; the service is gone.)
+//
+// Decisions that would otherwise look like mistakes:
+// - Base.astro, its theme switch and palettes, and the same field and button classes as
+//   /admin/posts/ (src/pages/admin/posts/index.astro says why bg-[#ffffff] and why no style block).
+// - The list carries ym-hide-content and the search field ym-disable-keys: names and email
+//   addresses are personal data, and Yandex Metrika's Session Replay records the pages
+//   (METRIKA.md 3.1, the classes Yandex documents for this).
+// - noindex, and the sitemap leaves /admin/ out; not in the menu, but linked from the account page
+//   for a metr or an admin.
+import Base from "../../../layouts/Base.astro";
+import { site } from "../../../config";
+// Added 2026-10-02 at the owner's request: the way back to the account page and to /admin/posts/.
+import AdminNav from "../../../components/AdminNav.astro";
+// Added later on 2026-10-02 at the owner's request: the pager under the list.
+import AdminPager from "../../../components/AdminPager.astro";
+// Added 2026-10-12 at the owner's request (the interface in two languages, src/i18n/lang.ts): every
+// label in both languages, through T and langAttrs; the Russian that stood here is the ru half of
+// the entries in src/i18n/admin.ts. As on /admin/posts/, the page does not reload on a language
+// switch, and the script writes its messages in both languages (admin-users.ts).
+import { ui } from "../../../i18n/strings";
+import { adminUi } from "../../../i18n/admin";
+import { langAttrs } from "../../../i18n/lang";
+import T from "../../../components/T.astro";
+
+const field =
+  "w-full rounded border border-gray-300 bg-[#ffffff] p-2.5 text-sm text-gray-800 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200 dark:focus:border-blue-500 dark:focus:ring-blue-500";
+// The status list is as wide as its longest name, not the row: the field classes with w-full
+// swapped for w-auto (two width utilities on one element would leave the winner to CSS order).
+const choice = field.replace("w-full", "w-auto");
+const primary =
+  "rounded bg-blue-600 px-4 py-2 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-50";
+const secondary =
+  "rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 transition-opacity hover:opacity-80 disabled:opacity-50 dark:border-slate-600 dark:text-gray-200";
+
+// Added 2026-10-10 (T032 of specs/001-self-hosted-club-site): the site renders on demand by default now
+// (astro.config.mjs, output "server"). This page stays built at build time: it holds no data from the backend
+// (a static shell around a browser script), so there is nothing to render per request.
+// Removed 2026-10-11 (T052): the `prerender = true` line that stood here is gone. A prerendered file is the same for
+// every visitor, so the header could not know who was looking; the page is rendered per request now, and the header is
+// right from the first byte (T142).
+
+// Added 2026-10-11 (T070): the page answers 404, not a redirect, to anyone who is neither a metr nor an admin, a visitor
+// with no session included (the owner's rule for the panel; the API says the same). The viewer is read from the
+// session by src/middleware.ts, so this is decided on the server before any markup is sent.
+const { status } = Astro.locals.viewer;
+if (status !== "metr" && status !== "admin") return Astro.rewrite("/404");
+---
+
+<Base title={ui.admin_users_title} noindex>
+  <section class="mx-auto max-w-3xl">
+    <AdminNav current="users" />
+    <h1 class="mb-6 text-2xl font-bold"><T s={ui.admin_users_title} /></h1>
+    <p id="users-status" class="mb-4 text-sm" role="status" aria-live="polite">
+            <T s={ui.auth_loading} />
+    </p>
+    <noscript>
+      <p class="text-sm">
+                <T s={adminUi.users_noscript} />
+      </p>
+    </noscript>
+
+    <p id="users-forbidden" class="text-sm" hidden>
+            <T s={adminUi.users_forbidden} />
+    </p>
+
+    <div id="users-box" hidden>
+      <form id="users-search" class="mb-4 flex flex-wrap gap-3">
+        <input
+          id="users-query"
+          type="search"
+          class:list={[field, "ym-disable-keys min-w-0 flex-1"]}
+          {...langAttrs({ placeholder: adminUi.users_query })}
+          autocomplete="off"
+        />
+        <button type="submit" class={primary}>
+          <T s={adminUi.users_find} />
+        </button>
+      </form>
+      <p
+        id="users-count"
+        class="mb-2 text-xs text-gray-500 dark:text-slate-400"
+      >
+      </p>
+      <ul
+        id="users-list"
+        class="ym-hide-content divide-y divide-gray-200 border-y border-gray-200 dark:divide-slate-700 dark:border-slate-700"
+      >
+      </ul>
+      {
+        /* Changed later on 2026-10-02 at the owner's request: numbered pages of 20 in place of the
+        "Показать ещё" button, which appended 50 more (AdminPager.astro). */
+      }
+      <AdminPager id="users-pager" label={adminUi.users_pages} />
+    </div>
+
+    <template id="users-row">
+      <li class="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
+        <div class="min-w-0 flex-1">
+          {
+            /* Changed later on 2026-10-02 at the owner's request: the status as a badge beside the
+            name, readable without opening the list next to it (the badge classes are those of
+            "Это устройство" on the account page), and the date the account was registered. */
+          }
+          <p class="font-medium">
+            <span data-name></span>
+            <span
+              data-status
+              class="ml-2 rounded bg-gray-100 px-2 py-0.5 text-xs font-normal text-gray-600 dark:bg-slate-700 dark:text-gray-300"
+            ></span>
+          </p>
+          <p data-email class="text-xs text-gray-500 dark:text-slate-400"></p>
+          <p data-created class="text-xs text-gray-500 dark:text-slate-400"></p>
+          <p data-note class="text-xs text-gray-500 dark:text-slate-400"></p>
+          {
+            /* Added 2026-10-11 (T152): the end of the member's access to the paid lectures. */
+          }
+          <p data-access class="text-xs text-gray-500 dark:text-slate-400"></p>
+        </div>
+        <select data-choice class={choice}></select>
+        <button data-apply type="button" class={secondary}>
+          <T s={adminUi.users_apply} />
+        </button>
+        {
+          /* Added 2026-10-11 (T070): the temporary password. The button is removed by the script for a
+          member the visitor may not issue one to; the panel is filled once, with the server's answer. */
+        }
+        <button data-temp-button type="button" class={secondary}>
+                    <T s={adminUi.users_temp_button} />
+        </button>
+        {
+          /* Added 2026-10-11 (T152): the lecture date of this member. The script removes the block for a member whose
+          date may not be changed (the same rule as the temporary password) and for an editor, who has none. An empty
+          field saved takes the date away. */
+        }
+        <div
+          data-access-editor
+          class="flex w-full flex-wrap items-center gap-3"
+        >
+          <label
+            class="text-xs text-gray-500 dark:text-slate-400"
+            data-access-label><T s={adminUi.users_access_label} /></label
+          >
+          <input data-access-input type="date" class={choice} />
+          <button data-access-save type="button" class={secondary}>
+                        <T s={adminUi.users_save_date} />
+          </button>
+        </div>
+        <div
+          data-temp
+          hidden
+          class="w-full rounded border border-gray-200 p-3 text-sm dark:border-slate-700"
+        >
+          <p>
+                        <T s={adminUi.users_temp_shown} />
+            <code data-temp-value class="ym-hide-content ml-1 font-mono"></code>
+          </p>
+          <p data-temp-until class="text-xs text-gray-500 dark:text-slate-400">
+          </p>
+          <button data-temp-copy type="button" class={secondary + " mt-2"}>
+                        <T s={ui.form_copy} />
+          </button>
+        </div>
+      </li>
+    </template>
+
+    <p class="mt-6 text-xs text-gray-500 dark:text-slate-400">
+      {
+        /* Changed 2026-10-11 (T070): rights are read from the database on every request, not from a token, so
+        the old "within a minute" line is no longer true. */
+      }
+            <T s={adminUi.users_footnote} />
+      <a
+        href={site.admin.postsPage}
+        class="text-blue-600 hover:underline dark:text-blue-400"
+        >{site.admin.postsPage}</a
+      >.
+    </p>
+  </section>
+</Base>
+
+<script>
+  // The panel's script; its header says what it does and why.
+  import "../../../scripts/admin-users";
+</script>

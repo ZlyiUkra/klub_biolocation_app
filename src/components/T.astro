@@ -1,0 +1,31 @@
+---
+// A piece of interface text in both languages, added 2026-10-12 (site.i18n in src/config.ts, the
+// mechanism in src/i18n/lang.ts). One span per language; custom.css shows the one of the document.
+// The span in the content's language (site.language, which <html lang> declares) carries no lang
+// attribute; the others carry theirs, so a screen reader reads an English label in English on a
+// page whose text is Russian.
+//
+// The spans stand on one line with nothing between them: a space or a line break there would be a
+// text node beside the visible span and could show as an extra space in running text. A plain
+// string is content (src/i18n/lang.ts, the Words type) and is printed as it is, without spans.
+import { site } from "../config";
+import type { Words } from "../i18n/lang";
+
+interface Props {
+  s: Words;
+}
+
+const { s } = Astro.props;
+// The content's language, the one <html lang> says (Base.astro).
+const pageLang: string = site.language;
+---
+
+{
+  typeof s === "string"
+    ? s
+    : site.i18n.languages.map((lang) => (
+        <span data-lang={lang} lang={lang === pageLang ? undefined : lang}>
+          {s[lang]}
+        </span>
+      ))
+}

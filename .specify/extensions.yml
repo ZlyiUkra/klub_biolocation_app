@@ -1,0 +1,11 @@
+hooks:
+  after_tasks:
+    - extension: agile-tasks
+      command: agile-tasks
+      optional: false
+      description: Regenerate the agile-style Epic/Feature/User Story/Task breakdown (agile-tasks.md) after tasks.md changes.
+  after_implement:
+    - extension: agile-tasks
+      command: agile-tasks
+      optional: false
+      description: Regenerate the agile-style Epic/Feature/User Story/Task breakdown (agile-tasks.md) after implementation progress changes.

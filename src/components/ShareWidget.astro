@@ -1,0 +1,60 @@
+---
+// Changed 2026-09-16: the five labels below read t.<key>. `t` in src/i18n/strings.ts is an
+// object, not a function, so the t("key") calls this file used to have threw "t is not a
+// function" the moment the component rendered.
+// Changed 2026-10-12 with the two interface languages (src/i18n/lang.ts): ui (was t). The four
+// data-share-* labels are language-dependent attributes now, so a script that reads one gets the
+// language shown; no script reads them today (they were written for the theme's share script,
+// which is not ported).
+// import { t } from "../i18n/strings";
+import { ui } from "../i18n/strings";
+import { langAttrs } from "../i18n/lang";
+import T from "./T.astro";
+
+interface Props {
+  url: string;
+  title: string;
+  text: string;
+}
+
+const { url, title, text } = Astro.props;
+---
+
+<div
+  class="sm:ml-auto"
+  data-share-widget
+  data-share-url={url}
+  data-share-title={title}
+  data-share-text={text}
+  {...langAttrs({
+    "data-share-label-default": ui.share,
+    "data-share-label-success": ui.share_copied,
+    "data-share-copy-summary-success": ui.share_copy_summary_success,
+    "data-share-copy-failed": ui.share_copy_failed,
+  })}
+>
+  <button
+    type="button"
+    class="share-trigger inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
+    data-share-copy-summary
+  >
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      class="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+    >
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        d="M8.59 13.51l6.83 3.98M15.41 6.51L8.59 10.49"></path>
+      <circle cx="18" cy="5" r="3"></circle>
+      <circle cx="6" cy="12" r="3"></circle>
+      <circle cx="18" cy="19" r="3"></circle>
+    </svg>
+    {/* Changed 2026-10-12: both languages (was t.share). */}
+    <span data-share-label><T s={ui.share} /></span>
+  </button>
+</div>

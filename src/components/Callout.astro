@@ -1,0 +1,17 @@
+---
+// TODO(migration §6): port ../klub_biolocation/themes/void/layouts/shortcodes/callout.html.
+// Used from .mdx posts as <Callout title="..." type="tip">...</Callout>; the Hugo form was
+// {{< callout title="..." type="tip" >}}...{{< /callout >}} (only content/posts/article.md uses it).
+interface Props {
+  title?: string;
+  type?: "info" | "tip" | "warning" | "danger" | "neutral";
+  collapsible?: boolean;
+}
+
+const { title, type = "info" } = Astro.props;
+---
+
+<div class={`callout callout-${type}`}>
+  {title && <div class="callout-header">{title}</div>}
+  <div class="callout-content"><slot /></div>
+</div>

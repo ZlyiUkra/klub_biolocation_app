@@ -1,0 +1,272 @@
+/* The home-page carousel's stylesheet, ported from
+   ../klub_biolocation/themes/void/layouts/partials/home/carousel.html (MIGRATION-PLAN.md section 4).
+   Imported by src/components/Carousel.astro, which is used only by src/pages/index.astro, so these
+   rules reach the home page and no other.
+
+   Moved here on 2026-09-22. Until then the whole stylesheet lived inside Carousel.astro as a
+   JavaScript template literal, rendered with <style is:inline set:html={css} />. That had a cost
+   the comments below still mention: a backtick anywhere in this text ended the literal, so the
+   compiler started reading CSS as code and astro check failed with a pile of errors pointing at
+   prose. In a .css file a backtick is just a character; the warnings in the comments below are
+   kept as written, but they no longer apply. The rules themselves are unchanged, and so is what
+   the visitor sees: this file is still global CSS, not scoped, because these selectors have to
+   reach html, main and the theme's markup. */
+
+/* Full-bleed: the carousel is wider than the main container (max-w-4xl) and spans the whole viewport.
+   html{overflow-x:clip} suppresses horizontal page scrolling (100vw includes the scrollbar width).
+   main{overflow:visible} disables the theme's overflow-x-auto on mobile; otherwise main shows its own scrollbar. */
+html {
+  overflow-x: clip;
+}
+
+/* main.overflow-x-auto, not plain main, and that is a bug fix rather than a copy.
+   Base.astro gives main the utility classes overflow-x-auto sm:overflow-visible, and a class
+   selector outranks an element selector, so the Hugo original - main{overflow:visible} - lost
+   below 640px and never took effect there. Two consequences, both present in the Hugo site too:
+   overflow-x:auto forces overflow-y to compute to auto, which made main a scroll container that
+   clipped the carousel's negative top margin, so the band of background under the header came
+   back on narrow screens; and the full-bleed carousel gave main its own horizontal scrollbar
+   along the bottom of the viewport. Matching the specificity makes the rule win at every width.
+   This CSS only exists on the home page, so no other page's wide content is affected.
+   Do not write a backtick in these comments: the block is a JavaScript template literal, and a
+   backtick ends it. The compiler then reads the CSS as code and astro check fails. */
+main.overflow-x-auto {
+  overflow: visible;
+}
+
+/* Runs under the fixed header, which is the one change to the Hugo original.
+   Base.astro offsets the content with pt-24 (6rem) because the header is fixed, but the header
+   itself is shorter than that, so a band of page background showed between the two. Rather than
+   tune a number against a header height that changes with the viewport, the carousel starts at
+   the top of the document and the header paints over it: then there is no gap to measure.
+   margin-top:-6rem cancels the pt-24 exactly and the same 6rem goes back into the height, so the
+   carousel still occupies its original height in the flow and nothing below it moves. */
+.void-carousel {
+  position: relative;
+  width: 100vw;
+  margin: -6rem 0 2.5rem calc(50% - 50vw);
+  height: calc(clamp(220px, 40vh, 560px) + 6rem);
+  overflow: hidden;
+  background: #e5e7eb;
+}
+
+.dark .void-carousel {
+  background: #1f2937;
+}
+
+.void-carousel__slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+
+.void-carousel__slide.is-active {
+  opacity: 1;
+  z-index: 1;
+}
+
+.void-carousel__slide img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.void-carousel__btn,
+.void-carousel__toggle {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  cursor: pointer;
+  transition:
+    opacity 0.3s,
+    background 0.2s;
+}
+
+.void-carousel__btn:hover,
+.void-carousel__toggle:hover {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+/* The arrows centre on the part of the carousel the visitor can see, not on the whole element:
+   the header hides the top of it. The hidden band is exactly the header's height, which is 68px
+   at desktop widths, so half of it rounds to 2rem. An approximation on purpose - the header is a
+   little taller on narrow screens - but the arrows only appear on hover and a few pixels of drift
+   there costs nothing, whereas a visible band of background at the top did. */
+.void-carousel__btn {
+  top: calc(50% + 2rem);
+  width: 2.75rem;
+  height: 2.75rem;
+  transform: translateY(-50%);
+  font-size: 1.9rem;
+  line-height: 1;
+  padding: 0 0 0.2rem;
+  opacity: 0;
+}
+
+.void-carousel__btn--prev {
+  left: 1rem;
+}
+
+.void-carousel__btn--next {
+  right: 1rem;
+}
+
+.void-carousel:hover .void-carousel__btn,
+.void-carousel:focus-within .void-carousel__btn {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .void-carousel__btn {
+    opacity: 0.85;
+  }
+}
+
+/* Added 2026-09-28, the colleague's proposal as the owner settled it: on a touch screen the
+   arrows go, on phones and tablets alike, because a swipe already turns the photos there
+   (carousel.ts) and on a phone the arrows covered a quarter of a 171px-high frame. The rule
+   above, which kept them half-visible without hover, now applies only to a device that has no
+   hover and a fine pointer. A narrow desktop window keeps its arrows: it has a mouse and no swipe.
+   A finger held on a photo pauses the carousel (carousel.ts), so a long press must not open the
+   browser's "save image" menu instead - touch-callout for iOS, the contextmenu handler in the
+   script for Android; the owner agreed to lose that menu here. user-select keeps the long press
+   from selecting the picture. A deliberate departure from the Hugo carousel, MIGRATION-PLAN.md
+   section 9. The owner confirmed that a device with a mouse keeps the arrows on hover at every
+   width, as before. */
+@media (hover: none) and (pointer: coarse) {
+  .void-carousel__btn {
+    display: none;
+  }
+
+  .void-carousel__slide img {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+.void-carousel__toggle {
+  right: 1rem;
+  bottom: 0.85rem;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+}
+
+.void-carousel__toggle svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
+}
+
+.void-carousel__dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 1.1rem;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.void-carousel__dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    transform 0.2s,
+    background 0.2s;
+}
+
+.void-carousel__dot.is-active {
+  background: #fff;
+  transform: scale(1.35);
+}
+
+.void-carousel.is-single .void-carousel__btn,
+.void-carousel.is-single .void-carousel__toggle,
+.void-carousel.is-single .void-carousel__dots {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .void-carousel__slide {
+    transition: none;
+  }
+}
+
+/* Phones: the frame follows the photo instead of cropping it. Added 2026-09-22, after the reviewer
+   reported that a phone shows only part of each photo and that the waterfall in one of them is off
+   the screen entirely (REVIEW-VIDEO.md, remark 6).
+
+   The arithmetic behind it. Every photo in public/images/carousel/ is 1600x700, an aspect ratio of
+   2.29:1. The rule above gives the carousel clamp(220px, 40vh, 560px) + 6rem of height, which on a
+   390x844 phone is a 390x434 frame, and object-fit:cover fills a frame in both directions: the
+   photo is scaled to 434px tall, therefore 994px wide, and 390px of that are on the screen. That is
+   39% of the picture, taken from the middle, so whatever it was composed around is outside the
+   frame. At 1280x900 the same formula gives a 1280x456 frame for a 1043x456 photo, nothing is lost,
+   and the fault never shows on a desktop - which is why it stood for two weeks.
+
+   aspect-ratio makes the height follow the width at the photo's own ratio, so cover has nothing
+   left to crop. height:auto is needed with it, because the rule above sets an explicit height and a
+   later declaration only wins for the property it names.
+
+   margin-top goes back to 0, which gives up the trick of running under the header: the carousel
+   starts where main's pt-24 puts it, 96px down, showing the same 28px band of page background
+   under the 68px header that every other page on this site shows. Keeping the overlap was the
+   other option and it cannot be had together with the whole photo - the 6rem that has to go back
+   into the height is exactly what makes the frame taller than the picture. The overlap is a
+   desktop effect; the uncropped photo is what the visitor came for.
+
+   The arrows centre on 50% again for the same reason: with nothing hidden behind the header there
+   is no band to compensate for, and on a frame this short the 2rem offset drops them into the dots.
+
+   639px and not 640px: max-width is inclusive, so this is everything below the breakpoint the
+   header and the menu already switch on. */
+@media (max-width: 639px) {
+  .void-carousel {
+    /* Not 0, and the number is measured rather than chosen. The wrapper in Base.astro carries
+       pt-24 (6rem) to clear the fixed header, and below 640px that header is 3.5rem tall: 56px,
+       the 32px logo plus py-3 above and below it. Setting margin-top to 0 therefore left a 40px
+       band of page background between the header and the carousel, which the owner asked to
+       have gone. Pulling the carousel up by the difference puts its top edge exactly on the
+       bottom edge of the header, with no band and nothing of the photo hidden.
+       Re-measure if the contents of the header change height: this value is the header. */
+    margin-top: calc(3.5rem - 6rem);
+    height: auto;
+    aspect-ratio: 1600 / 700;
+  }
+
+  .void-carousel__btn {
+    top: 50%;
+  }
+
+  /* Added 2026-09-28 with the rule for touch screens above: the pause button is kept, at the
+     owner's word after a recommendation - holding a finger on the photo pauses it too, but that
+     is not something a visitor would guess, and whoever wants to look at one photo needs a pause
+     that lasts. It shrinks from 32px to 24px on a phone, where it sat over a 171px-high frame. */
+  .void-carousel__toggle {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .void-carousel__toggle svg {
+    width: 0.75rem;
+    height: 0.75rem;
+  }
+}

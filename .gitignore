@@ -1,0 +1,35 @@
+# Astro build output and generated types
+dist/
+.astro/
+.env.local
+# Added 2026-09-28: the local map of paid video ids for npm run video-access:dev (PAID-VIDEO.md).
+# Real ids of paid videos never enter the repository.
+workers/video-access/videos.local.json
+# Added 2026-10-02: the local settings of npm run statuses:dev - the Clerk secret key and the ids
+# of the protected admins (ADMIN.md). The secret key never enters the repository.
+workers/statuses/settings.local.json
+# (Removed 2026-10-11, T071: workers/statuses/ is gone, so the three ignore lines for its local files are kept only
+# in case such a file is found on an old machine; none can be created any more.)
+# Added later on 2026-10-02: the same secret key, encrypted for one Windows account by
+# npm run statuses:key, and the file it writes first (scripts/statuses-key.mjs). Useless on any
+# other computer or account, and still never committed.
+workers/statuses/clerk-secret.local.dpapi
+workers/statuses/clerk-secret.local.dpapi.new
+
+# Added 2026-10-10 (T003 of specs/001-self-hosted-club-site): the backend's local settings and its compiled output.
+# The real .env holds the database password and the sending mailbox's credentials and never enters the repository;
+# .env.example lists the names only.
+.env
+server/dist/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Added 2026-10-11 (T079, T080): the development video volume (VIDEO_ROOT). Video files never enter the repository.
+video-volume/

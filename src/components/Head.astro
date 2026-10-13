@@ -1,0 +1,198 @@
+---
+import { site } from "../config";
+// Added 2026-10-12 with the two interface languages (site.i18n in src/config.ts).
+import { inLang, type Lang, type Words } from "../i18n/lang";
+
+interface Props {
+  // Changed 2026-10-12: Words, so a page whose title is interface text (Posts, Tags, Вход) passes
+  // it in both languages; a title that is content (an article, a tag) is still a string.
+  title?: Words;
+  description?: string;
+}
+
+const { title } = Astro.props;
+// Changed 2026-10-12: the title in one language, for the language-dependent version below.
+// const pageTitle = title ? `${title} | ${site.title}` : site.title;
+const titleIn = (lang: Lang) => {
+  const words = title === undefined ? "" : inLang(title, lang);
+  return words ? `${words} | ${site.title}` : site.title;
+};
+const pageTitle = titleIn(site.i18n.defaultLanguage);
+// Added 2026-10-12: the title of every language on the element, which src/scripts/lang.ts copies
+// into document.title after a switch; a title element can hold no span. Only for a Phrase - a
+// string reads the same in every language.
+const titleAttrs =
+  typeof title === "object"
+    ? Object.fromEntries(
+        site.i18n.languages.map((lang) => [`data-${lang}-text`, titleIn(lang)]),
+      )
+    : {};
+---
+
+<meta name="viewport" content="width=device-width" />
+<title {...titleAttrs}>{pageTitle}</title>
+
+<meta name="color-scheme" content="light dark" />
+<meta
+  name="theme-color"
+  media="(prefers-color-scheme: dark)"
+  content="#0b1e3d"
+/>
+<script is:inline>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      var dark = t
+        ? t === "dark"
+        : window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches;
+      if (dark) document.documentElement.classList.add("dark");
+    } catch (_) {}
+  })();
+</script>
+{
+  /* Added 2026-10-12 with the two interface languages (site.i18n in src/config.ts): the language
+  the visitor chose, as a class on <html>, before the first paint - the same reason and the same
+  place as the theme above. custom.css hides the spans of the other language under it, so a page
+  never shows the default language first and then switches. Only a language other than the default
+  gets a class; a stored value that is not one of the site's languages is ignored. define:vars
+  implies is:inline (the note on the guest gate in Base.astro). */
+}
+<script
+  is:inline
+  define:vars={{
+    langKey: site.i18n.storageKey,
+    langs: site.i18n.languages,
+    langDefault: site.i18n.defaultLanguage,
+  }}
+>
+  try {
+    var lang = localStorage.getItem(langKey);
+    if (lang !== langDefault && langs.indexOf(lang) !== -1) {
+      document.documentElement.classList.add("lang-" + lang);
+    }
+  } catch (_) {}
+</script>
+<style is:inline>
+  html.dark,
+  html.dark body {
+    background-color: var(--page-bg, #0b1e3d);
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+</style>
+
+{
+  /* Added 2026-09-22 with the feeds themselves: this is how a browser or a reader extension finds
+  a feed - the address alone is not discoverable. Both are listed on every page, each with its own
+  title, because the two are separate subscriptions (the posts and the lectures) and a reader shows
+  these titles when offering the choice. */
+}
+<link
+  rel="alternate"
+  type="application/rss+xml"
+  title={site.title}
+  href="/rss.xml"
+/>
+<link
+  rel="alternate"
+  type="application/rss+xml"
+  title={`${site.title} - Video`}
+  href="/video/rss.xml"
+/>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+<!-- Speed up Busuanzi counter load -->
+{
+  /* Changed 2026-09-17: the note below was moved here out of the HTML comment above. An HTML
+  comment is sent to every visitor with the page; an Astro comment is not.
+  The note: consider replacing Busuanzi with Google Analytics or Yandex Metrika - deeper
+  analytics, but no public view counter on the page.
+  ? нужно заменить на Google Analytics / Yandex Metrika
+  (для глубокой аналитики, но без красивого публичного счетчика на страницу) */
+}
+<link rel="dns-prefetch" href="//busuanzi.ibruce.info" />
+<link rel="preconnect" href="https://busuanzi.ibruce.info" crossorigin />
+
+<!-- Favicon configuration (files in public/favicon/, copied from the Hugo static/ folder) -->
+<link
+  rel="icon"
+  type="image/png"
+  href="/favicon/favicon-96x96.png"
+  sizes="96x96"
+/>
+<link rel="icon" type="image/svg+xml" href="/favicon/favicon.svg" />
+<link rel="shortcut icon" href="/favicon/favicon.ico" />
+<link
+  rel="apple-touch-icon"
+  sizes="180x180"
+  href="/favicon/apple-touch-icon.png"
+/>
+<link rel="manifest" href="/favicon/site.webmanifest" />
+<!-- End of favicon configuration -->
+
+<!-- Theme fonts (head/css.html). The stylesheets themselves are imported in Base.astro. -->
+<link
+  href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap"
+  rel="stylesheet"
+/>
+<link
+  href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap"
+  rel="stylesheet"
+/>
+
+{
+  /* Do not add the Alpine.js CDN tag back here. Alpine comes from npm through the
+  @astrojs/alpinejs integration in astro.config.mjs, which already bundles it into every page.
+  The CDN tag stood here until 2026-09-17; with both, every page loaded Alpine twice and
+  alpine:init fired twice (measured in headless Edge). Checked after the removal: Alpine 3.17.3
+  starts once and the table of contents opens and closes. The integration is pinned to 0.4.9 -
+  see README, section on @astrojs/alpinejs being pinned to 0.4.9. */
+}
+{
+  /* The three KaTeX CDN tags that stood here - the stylesheet, katex.min.js and the auto-render
+  extension - were removed on 2026-09-22, when the owner chose build-time math. rehype-katex now
+  typesets the formulas while the page is built (astro.config.mjs explains the choice and what was
+  broken before it), so the browser has nothing to fetch and nothing to run: the markup arrives
+  finished. The stylesheet KaTeX's markup needs is imported in Base.astro from the npm package.
+
+  What this buys beyond the repair: a page with a formula no longer depends on jsdelivr answering,
+  shows no flash of untypeset source, and ships no third-party JavaScript for maths. Do not put the
+  tags back; if math ever needs client-side rendering again, the question is why the build cannot
+  do it. */
+}
+{
+  /* Changed 2026-09-22: the onload="renderMathInElement(document.body);" attribute that used to
+  sit on the tag below is gone. It made every page render its math twice. KaTeX's auto-render
+  ships with $$...$$, \(...\) and \[...\] as its delimiters and no others, so that first pass
+  typeset the display formulas and walked away from every $...$ inline one; the real call, the one
+  in src/scripts/site.js, then walked the same document again with the delimiter list the theme
+  uses, which does include $...$. Two passes over document.body, the second doing all the work the
+  visitor sees.
+
+  Removing it changes nothing on screen: the site.js call is a superset of what the attribute did.
+  What it also removes is an inline event handler, which is the one thing a Content-Security-Policy
+  header cannot allow without unsafe-inline - worth having gone before the site gets a CSP.
+
+  The tag stays `defer` and stays in the head: site.js does its work inside DOMContentLoaded, and
+  deferred scripts all run before that event fires, so renderMathInElement is defined by then.
+
+  Superseded later the same day: the tag that note describes is gone as well, together with the
+  call in site.ts, because the owner chose to typeset at build time. The note is kept because it
+  records why the attribute went first and what it cost - the same reasoning applies to any inline
+  handler someone is tempted to add here. */
+}
+
+<!-- Busuanzi page/site view counter (load early to avoid delayed render) -->
+<script
+  is:inline
+  async
+  src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>

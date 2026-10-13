@@ -1,0 +1,76 @@
+---
+// The page of an entry the viewer sees only as a card (T090 of specs/001-self-hosted-club-site; FR-009, FR-010, user
+// story 2 scenario 3): the title, the date, the tags and the introduction, then the notice that the rest is locked.
+//
+// Decisions that would otherwise look like mistakes:
+// - It is its own small layout and not ArticleLayout with the body left out. The article frame carries a table of
+//   contents, a share button, a reading time, a views counter and the comments, every one of which would describe or
+//   advertise the part that is not here; a page that never renders them cannot leak through them.
+// - It tells Base.astro `locked`, which leaves out the head metadata of the page (the description, every `og:*`, the
+//   `twitter:*` and `article:*` tags, the canonical address) and asks the robots not to index it. The title stays,
+//   because the card shows it. The text of the card is the one the lists show, the introduction the owner chose to make
+//   visible: the locked part is never sent here at all (the backend sends `content: null`).
+// - The previous and next links are left out: the backend already builds them from the viewer's own visible set, and a
+//   locked page has no use for a way to walk on from a place the visitor cannot read.
+import Base from "./Base.astro";
+import LockedNotice from "../components/LockedNotice.astro";
+import Terms from "../components/Terms.astro";
+// Added 2026-10-13 (T106, T151): the comments of an entry seen as a card are read by a guest too.
+import Comments from "../components/Comments.astro";
+import { formatIsoDate } from "../lib/date";
+// Changed 2026-10-12 with the two interface languages (src/i18n/lang.ts): ui (was t), through T.
+import { ui } from "../i18n/strings";
+import T from "../components/T.astro";
+
+interface Props {
+  // Added 2026-10-13 (T106, T151): which thread the comments below the locked card belong to.
+  kind: "post" | "video";
+  slug: string;
+  title: string;
+  date: Date;
+  /** The introduction: the card's summary. */
+  summary: string;
+  tags: string[];
+}
+
+const { kind, slug, title, date, summary, tags } = Astro.props;
+---
+
+<Base title={title} locked>
+  <div class="mx-auto max-w-4xl px-4 py-8">
+    <article
+      class="overflow-hidden rounded-lg bg-white p-6 shadow-sm dark:bg-slate-900"
+    >
+      <h1 class="mb-3 text-3xl font-bold text-gray-800 dark:text-gray-100">
+        {title}
+      </h1>
+      <time class="mb-4 block text-sm text-gray-500 dark:text-gray-400">
+        {formatIsoDate(date)}
+      </time>
+      {
+        summary && (
+          <p class="mb-6 text-gray-600 dark:text-gray-300">{summary}</p>
+        )
+      }
+      <LockedNotice href={Astro.url.pathname} />
+      <div class="mt-6">
+        <Terms tags={tags} />
+      </div>
+    </article>
+    {
+      /* Added 2026-10-13 (T106, T151, the owner's decision of 2026-10-10): a guest who sees a lecture as a card reads
+    its comments, so that they understand what is going on there; writing needs the lecture rule, as everywhere.
+    This layout's note above lists the comments among what the locked page leaves out: that was true of Disqus's
+    thread, and is not of this one, whose answers the backend gives by the same visibility rule as the card. */
+    }
+    <Comments kind={kind} slug={slug} />
+    <div class="mt-6 flex justify-center">
+      <a
+        href="/"
+        class="inline-flex items-center text-gray-600 transition-colors hover:text-blue-600"
+      >
+        <T s={ui.back_to_home} />
+      </a>
+    </div>
+  </div>
+</Base>

@@ -1,0 +1,96 @@
+---
+// The six reactions above the comments of a post or a video (T187 of specs/001-self-hosted-club-site; FR-047; the routes
+// are GET, PUT and DELETE /api/entries/<kind>/<slug>/reactions, T186). It has the look of the previous comment service's
+// row: "What do you think?", the number of responses, six round pictures with their names under them, centred.
+//
+// Decisions that would otherwise look like mistakes:
+// - The markup is only the frame, as Comments.astro's is: the six buttons, their pictures and names are printed here
+//   (so a visitor with no script still sees the row), and src/scripts/reactions.ts writes the counts, the marked
+//   choice and the notes after the page loads, so the page is the same for every viewer and is never cached with one
+//   person's choice in it.
+// - The root is a div and not a section, on purpose: the block lives inside Comments.astro's section, and
+//   scripts/check-markup.mjs marks that section by its first closing tag, which a second section inside would end early.
+// - The six names and their order are src/lib/reaction-kinds.ts, the same list the backend takes; a picture is
+//   /images/reactions/<kind>.svg, files of the site (Noto Emoji, licence beside them), never a request to another host.
+//   A name is a key of `reactionLabels`, so both languages are in src/i18n/strings.ts like every other string.
+// - The pictures carry an empty `alt`: the name printed under each one is the button's name, and a screen reader
+//   should not say it twice.
+// - The root is not given an `aria-live` region: the count changes only after the viewer's own press, and the message
+//   paragraph has `role="alert"` for the one thing that goes wrong.
+// - The look is src/styles/reactions.css, imported here for the reason Comments.astro gives for its own stylesheet.
+import "../styles/reactions.css";
+import { reactionLabels, ui } from "../i18n/strings";
+import { reactionKinds } from "../lib/reaction-kinds";
+import T from "./T.astro";
+
+export interface Props {
+  /** The entry's kind, as the API names it. */
+  kind: "post" | "video";
+  /** The entry's slug, which never changes. */
+  slug: string;
+}
+
+const { kind, slug } = Astro.props;
+---
+
+<div
+  class="reactions"
+  role="group"
+  aria-labelledby="reactions-title"
+  data-role="reactions"
+  data-kind={kind}
+  data-slug={slug}
+>
+  <h3 id="reactions-title" class="reactions-title">
+    <T s={ui.reactions_title} />
+  </h3>
+  <p class="reactions-total" data-role="reactions-total">
+    <T s={ui.reactions_total(0)} />
+  </p>
+  <ul class="reactions-row">
+    {
+      reactionKinds.map((name) => (
+        <li class="reactions-item">
+          <button
+            type="button"
+            class="reaction"
+            data-reaction={name}
+            aria-pressed="false"
+            aria-disabled="true"
+          >
+            <span
+              class="reaction-count"
+              data-role="reaction-count"
+              data-empty="true"
+            >
+              0
+            </span>
+            <img
+              class="reaction-picture"
+              src={`/images/reactions/${name}.svg`}
+              alt=""
+              width="40"
+              height="40"
+              decoding="async"
+            />
+            <span class="reaction-label">
+              <T s={reactionLabels[name]} />
+            </span>
+          </button>
+        </li>
+      ))
+    }
+  </ul>
+  <p class="reactions-note" data-role="reactions-note" hidden></p>
+  <p
+    class="reactions-message"
+    data-role="reactions-message"
+    role="alert"
+    hidden
+  >
+  </p>
+</div>
+
+<script>
+  import "../scripts/reactions";
+</script>

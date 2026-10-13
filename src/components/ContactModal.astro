@@ -1,0 +1,444 @@
+---
+// Added 2026-10-01 at the owner's request (AUTH.md section 12.6): the form can also be opened by
+// the event site.contact.openEvent, sent on the document by any script - today the sign-in page,
+// when a visitor presses "Помощь" or "Написать в поддержку" in Clerk's form. The event's name
+// reaches the inline script below through data-open-event, since an inline script cannot import
+// the config; its detail may carry `email` and `subject` to fill in.
+//
+// Restyled the same day at the owner's request: the form takes the site's look in both themes,
+// the values Clerk's forms were given in src/styles/clerk.css and the site's own buttons
+// (src/pages/auth/account.astro, PaidVideo.astro). It used zinc greys and an emerald button,
+// which no other part of the site uses; in the dark theme its fields were grey on a dark-blue
+// card. The classes it had, so the change can be followed or undone:
+//   card     rounded-2xl border-zinc-200 dark:border-zinc-800 dark:bg-zinc-900 (bg-white kept)
+//   close    text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200
+//   heading  text-zinc-900 dark:text-zinc-100
+//   labels   text-xs text-zinc-500 dark:text-zinc-400
+//   fields   rounded-xl border-zinc-200 bg-zinc-50 focus:border-emerald-500 dark:border-zinc-700
+//            dark:bg-zinc-800
+//   button   rounded-xl bg-emerald-600 py-2.5 text-sm font-medium shadow-md transition-colors
+//            hover:bg-emerald-700
+//   toast    bg-emerald-600 on success
+// What they are now, and where each comes from:
+//   card     rounded-lg like every card on the site, gray-200 / slate-700 border. Its background
+//            was already --panel-bg in both themes: custom.css paints .bg-white with !important,
+//            so dark:bg-zinc-900 never applied and is gone.
+//   heading  gray-800 / gray-200, Clerk's foreground colours.
+//   labels   text-sm, the size of the labels in Clerk's forms, gray-500 / slate-400.
+//   fields   white with a gray-300 border, slate-800 with a slate-700 border in the dark theme,
+//            text gray-800 / gray-200, and a blue-600 (dark: blue-500) border and ring on focus -
+//            the input colours in clerk.css. White is bg-[#ffffff]: plain bg-white would be
+//            repainted to --panel-bg by custom.css and the fields would melt into the card.
+//   button   the site's button exactly - rounded bg-blue-600 px-4 py-2 text-white, opacity on
+//            hover - at full width.
+//   toast    green-600 on success, the pinned palette's green; red-600 on an error, as before.
+//
+// Added later the same day at the owner's request (AUTH.md section 12.7): for a signed-in member
+// the form fills in the name, when Clerk's profile has one, and the email, however it is opened;
+// the message is left to the member. The two come from localStorage under site.auth.contactKey
+// (data-member-key below), which the pages that load Clerk write next to the session flag, since
+// this form is on every page and must not load Clerk. The three fields carry ym-disable-keys, so
+// that Yandex Metrika's Session Replay does not record what is in them.
+// Changed 2026-10-12 (T167, the removal of the previous sign-in provider): the name and the email come from
+// `GET /api/auth/me` and not from a localStorage record; `data-member-key` and `site.auth.contactKey` are gone.
+//
+// Changed 2026-10-13 (T109, plan phase 7): the form posts to the club's own route, `POST /api/feedback`
+// (server/src/feedback/routes.ts), and no longer to the external web3forms service; its access key is gone from the
+// markup. The look, the open event and the toasts are as they were. What changed, and why:
+// - The body is JSON, built by the script from the three fields: `message` is the route's `body`, `name` its `name`,
+//   `email` its `contact`, and the hidden subject field, when the form was opened by the event with a topic, its
+//   `subject` (a code of the fixed list in src/lib/feedback-rules.ts, not text).
+// - A honeypot field named `website`, off-screen and out of the tab order and of the screen reader's reach: a person
+//   never fills it, a form-filling bot does, and the route then refuses with the same plain 400 as for a form sent
+//   too fast. It carries no label text on purpose (nothing visible, nothing to translate).
+// - `startedAt`, the moment the form was opened, in the SERVER's time: the device's clock may be minutes off, and the
+//   route refuses a form that is "from the future" or older than a day. The offset is learned from the Date header of
+//   the `/api/auth/me` answer the form asks for when it opens (the way the panel's scripts learn it, auth-forms.ts), and
+//   added to the moment of opening when the form is sent. A device whose clock is a long way off therefore still sends.
+// - The `maxlength` of each field is the route's own limit (src/lib/feedback-rules.ts), so the browser stops the typing
+//   before the server has to refuse it.
+// - A third toast, for the route's 429 (five stored messages an hour from one address): "too many messages, try
+//   later", where a refusal of any other kind keeps the general "sending failed".
+// - The submit button is disabled while a message is on its way, so a double press stores one message.
+import { site } from "../config";
+// Added 2026-10-13 (T109): the lengths of the three texts, the route's own.
+import { feedbackTextLimits } from "../lib/feedback-rules";
+// Added 2026-10-12 at the owner's request (the interface in two languages, src/i18n/lang.ts): every
+// label of the form in both languages through T, and the two toasts as templates the inline script
+// clones, since an inline script cannot import the dictionary. The subject the sign-in page sends
+// stays Russian: it is read by whoever receives the letter, not by the visitor.
+import { ui } from "../i18n/strings";
+import T from "./T.astro";
+---
+
+<div
+  id="contact-modal"
+  class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+  data-open-event={site.contact.openEvent}
+>
+  <!-- Контейнер модалки -->
+  <div
+    class="relative w-full max-w-md rounded-lg border border-gray-200 bg-white p-6 shadow-2xl dark:border-slate-700"
+  >
+    <!-- Кнопка закрытия -->
+    <button
+      id="close-modal-btn"
+      class="absolute right-4 top-4 text-xl text-gray-400 hover:text-gray-600 dark:text-slate-400 dark:hover:text-gray-200"
+    >
+      ✕
+    </button>
+
+    {
+      /* Changed 2026-09-30, from a Tailwind 3.4 audit the owner ordered: font-bilingual, the site's
+      serif, where it was font-serif. The config never sets `serif`, so that class gave Tailwind's
+      default stack (Georgia and the like) and the heading stood apart from every other heading
+      on the site (Font Family, "Customizing your theme"). */
+    }
+    <h3
+      class="mb-4 font-bilingual text-xl font-semibold text-gray-800 dark:text-gray-200"
+    >
+      {
+        /* Changed 2026-10-12: both languages (it read "Обратная связь"); so are the labels below. */
+      }
+      <T s={ui.contact_title} />
+    </h3>
+
+    {
+      /* Changed 2026-10-13 (T109): the form's address is the club's own route and it has an id of its own (the
+      script looked it up by the old service's address); the service's access key input is gone. The script
+      sends JSON, so without it the form would only post urlencoded text the route refuses - which is why the
+      address is not a way to send, only a place for a browser that has no script to fail without leaking the
+      message into the address bar. */
+    }
+    <form
+      id="contact-form"
+      action="/api/feedback"
+      method="POST"
+      class="space-y-4"
+    >
+      {
+        /* Added 2026-10-01 (AUTH.md section 12.6): the subject of the letter, web3forms' `subject`
+        field ("The Name attribute must be called subject", web3forms docs, "Email Subject line").
+        Disabled, and therefore not sent, unless the form was opened by the open event with a
+        subject - "Проблема со входом" from the sign-in page; opened from the footer, the letter
+        keeps web3forms' own subject as before. */
+      }
+
+      {
+        /* Added 2026-10-01 at the owner's request: ym-disable-keys on the three fields below, Yandex
+        Metrika's class that keeps a field's contents out of Session Replay (the Webvisor) - replaced
+        with asterisks in the recording (Yandex's help, "Enabling and configuring Session Replay";
+        METRIKA.md proposal 3.1, which covers this form). Needed now that a member's name and email
+        are filled in by themselves (fillMember in the script below), not only typed. */
+      }
+      <input
+        id="contact-subject"
+        type="hidden"
+        name="subject"
+        value=""
+        disabled
+      />
+
+      <div>
+        <label class="mb-1 block text-sm text-gray-500 dark:text-slate-400"
+          ><T s={ui.contact_name} /></label
+        >
+        <input
+          type="text"
+          name="name"
+          required
+          maxlength={feedbackTextLimits.maxNameChars}
+          class="ym-disable-keys w-full rounded border border-gray-300 bg-[#ffffff] p-2.5 text-sm text-gray-800 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200 dark:focus:border-blue-500 dark:focus:ring-blue-500"
+        />
+      </div>
+
+      <div>
+        <label class="mb-1 block text-sm text-gray-500 dark:text-slate-400"
+          ><T s={ui.contact_email} /></label
+        >
+        <input
+          type="email"
+          name="email"
+          required
+          maxlength={feedbackTextLimits.maxContactChars}
+          class="ym-disable-keys w-full rounded border border-gray-300 bg-[#ffffff] p-2.5 text-sm text-gray-800 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200 dark:focus:border-blue-500 dark:focus:ring-blue-500"
+        />
+      </div>
+
+      <div>
+        <label class="mb-1 block text-sm text-gray-500 dark:text-slate-400"
+          ><T s={ui.contact_message} /></label
+        >
+        <textarea
+          name="message"
+          rows="4"
+          required
+          maxlength={feedbackTextLimits.maxBodyChars}
+          class="ym-disable-keys w-full rounded border border-gray-300 bg-[#ffffff] p-2.5 text-sm text-gray-800 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200 dark:focus:border-blue-500 dark:focus:ring-blue-500"
+        ></textarea>
+      </div>
+
+      {
+        /* Added 2026-10-13 (T109): the honeypot (the note at the top). Off-screen by the sr-only class, out of the tab
+        order and hidden from assistive technology; a visitor never sees or reaches it. */
+      }
+      <div class="sr-only" aria-hidden="true">
+        <input
+          type="text"
+          name="website"
+          tabindex="-1"
+          autocomplete="off"
+          value=""
+        />
+      </div>
+
+      <button
+        type="submit"
+        class="w-full rounded bg-blue-600 px-4 py-2 text-white transition-opacity hover:opacity-90"
+      >
+        <T s={ui.contact_send} />
+      </button>
+    </form>
+  </div>
+</div>
+
+{
+  /* Added 2026-10-12: the two toasts' texts in both languages (the note at the top); showToast()
+  below clones one into the toast, and custom.css shows the language of the page. */
+}
+<template id="contact-toast-sent"><T s={ui.contact_sent} /></template>
+<template id="contact-toast-failed"><T s={ui.contact_failed} /></template>
+<template id="contact-toast-limit"><T s={ui.contact_limit} /></template>
+
+<!-- Контейнер для toast-уведомлений -->
+<div
+  id="toast-container"
+  class="pointer-events-none fixed bottom-6 right-6 z-[60] flex flex-col gap-2"
+>
+</div>
+
+<script is:inline>
+  const modal = document.getElementById("contact-modal");
+  const openBtn = document.getElementById("open-modal-btn");
+  const closeBtn = document.getElementById("close-modal-btn");
+  // Changed 2026-10-13 (T109): the form has an id of its own; it was found by the old service's address.
+  const form = document.getElementById("contact-form");
+  const toastContainer = document.getElementById("toast-container");
+
+  // Универсальная функция toast
+  function showToast(message, type = "success") {
+    const colors = {
+      // Changed 2026-10-01 (the restyle noted at the top): green-600, the site's green, was emerald-600.
+      success: "bg-green-600",
+      error: "bg-red-600",
+    };
+
+    const toast = document.createElement("div");
+    toast.className = `
+      pointer-events-auto
+      flex items-center gap-3
+      rounded-xl px-4 py-3
+      text-sm font-medium text-white
+      shadow-lg
+      opacity-0 translate-y-3
+      transition-all duration-300 ease-out
+      ${colors[type]}
+    `;
+    // Changed 2026-10-12: the message is a template's id now (contact-toast-sent or -failed), whose
+    // content holds the text in both languages; it was a string put into the second span with
+    // innerHTML: <span>${message}</span>.
+    toast.innerHTML = `
+      <span>${type === "success" ? "✓" : "✕"}</span>
+    `;
+    const text = document.createElement("span");
+    const template = document.getElementById(message);
+    if (template instanceof HTMLTemplateElement) {
+      text.append(template.content.cloneNode(true));
+    }
+    toast.append(text);
+
+    toastContainer.appendChild(toast);
+
+    // анимация появления
+    requestAnimationFrame(() => {
+      toast.classList.remove("opacity-0", "translate-y-3");
+    });
+
+    // автоскрытие
+    setTimeout(() => {
+      toast.classList.add("opacity-0", "translate-y-3");
+      setTimeout(() => toast.remove(), 300);
+    }, 3500);
+  }
+
+  // Модалка открыть
+  openBtn?.addEventListener("click", () => {
+    modal?.classList.remove("hidden");
+    modal?.classList.add("flex");
+  });
+
+  // Added 2026-10-01 (AUTH.md section 12.6): the second way in, the open event (its name is in
+  // data-open-event on the modal, from site.contact.openEvent). The detail may give an email
+  // address, written only into an empty field so that nothing the visitor typed is overwritten,
+  // and a subject, which switches the hidden subject field on.
+  const emailInput = form?.querySelector('input[name="email"]');
+  const subjectInput = document.getElementById("contact-subject");
+  const openEvent = modal?.dataset.openEvent;
+
+  // Added 2026-10-01 at the owner's request (AUTH.md section 12.7): for a member, the name and the email in the
+  // form, written only into empty fields while the document is marked kb-member; the message is left to the visitor.
+  // (Corrected 2026-10-12, T167: the source is the club's own backend, see fillMember below. The first version read a
+  // record kept by the previous sign-in provider's pages, which is gone.)
+  const nameInput = form?.querySelector('input[name="name"]');
+  // Changed 2026-10-12 (T167, the removal of the previous sign-in provider): the name and the email now come from the
+  // club's own backend (`GET /api/auth/me`, the same answer the account pages use), not from a localStorage record the
+  // provider's pages used to keep; nothing writes that record any more. Asked only while the document is marked
+  // kb-member, which the server sets from the session; a failed ask leaves the fields as they are.
+  // Changed 2026-10-13 (T109): called at every opening of the form, it now also (1) records the moment of opening, the
+  // route's `startedAt`, and (2) learns how far this device's clock is from the server's, from the Date header of the
+  // answer; both are used when the form is sent (sendMessage below). So the question is asked of every visitor, not
+  // only of a member as before: a visitor's answer is `{"viewer": null}` and fills nothing, and without it a device
+  // whose clock is minutes off would be refused as a bot or a stale form. A failed ask leaves the offset at zero.
+  let openedAt = Date.now();
+  let clockOffset = 0;
+  function fillMember() {
+    openedAt = Date.now();
+    fetch("/api/auth/me", {
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
+    })
+      .then((response) => {
+        const served = Date.parse(response.headers.get("Date") || "");
+        if (!Number.isNaN(served)) clockOffset = served - Date.now();
+        return response.json();
+      })
+      .then((body) => {
+        const member = body && body.viewer;
+        if (!member || typeof member !== "object") return;
+        if (
+          nameInput &&
+          !nameInput.value &&
+          typeof member.displayName === "string"
+        ) {
+          nameInput.value = member.displayName;
+        }
+        if (
+          emailInput &&
+          !emailInput.value &&
+          typeof member.email === "string"
+        ) {
+          emailInput.value = member.email;
+        }
+      })
+      .catch(() => {});
+  }
+
+  if (openEvent) {
+    document.addEventListener(openEvent, (event) => {
+      const detail =
+        event instanceof CustomEvent && event.detail ? event.detail : {};
+      if (emailInput && !emailInput.value && typeof detail.email === "string") {
+        emailInput.value = detail.email;
+      }
+      // Added with fillMember above: after the event's own email, so an address the sender gave wins.
+      fillMember();
+      if (subjectInput) {
+        subjectInput.value =
+          typeof detail.subject === "string" ? detail.subject : "";
+        subjectInput.disabled = subjectInput.value === "";
+      }
+      modal?.classList.remove("hidden");
+      modal?.classList.add("flex");
+    });
+  }
+  // Added with it: opened from the footer button, the form sends no subject, as before, even if
+  // the open event had switched it on earlier on this page. A listener of its own, next to the
+  // button's original one above.
+  openBtn?.addEventListener("click", () => {
+    if (subjectInput) subjectInput.disabled = true;
+    // Added with fillMember above: a member opening the form from the footer gets it filled too.
+    fillMember();
+  });
+
+  // закрыть
+  closeBtn?.addEventListener("click", () => {
+    modal?.classList.remove("flex");
+    modal?.classList.add("hidden");
+  });
+
+  // закрыть так же при клике на полупрозрачный фон вокруг формы
+  modal?.addEventListener("click", (e) => {
+    if (e.target === modal) {
+      modal.classList.remove("flex");
+      modal.classList.add("hidden");
+    }
+  });
+
+  // Отправка формы
+  // Changed 2026-10-13 (T109): the form is sent as JSON to the club's own route (the note at the top of the file lists
+  // the mapping of the fields); it was a FormData post to web3forms. The submit button is off while a message is on its
+  // way, and the route's 429 has a toast of its own.
+  let sending = false;
+  if (form) {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (sending) return;
+      sending = true;
+      const sendButton = form.querySelector('button[type="submit"]');
+      if (sendButton) sendButton.disabled = true;
+
+      const field = (name) => {
+        const element = form.elements.namedItem(name);
+        return element && "value" in element ? String(element.value) : "";
+      };
+      const message = {
+        body: field("message"),
+        name: field("name"),
+        contact: field("email"),
+        website: field("website"),
+        // The moment of opening in the SERVER's time (the note at fillMember above).
+        startedAt: openedAt + clockOffset,
+      };
+      // The topic is sent only when the open event gave one; opened from the footer the form names none.
+      if (subjectInput && !subjectInput.disabled && subjectInput.value !== "") {
+        message.subject = subjectInput.value;
+      }
+
+      try {
+        const response = await fetch("/api/feedback", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          credentials: "same-origin",
+          body: JSON.stringify(message),
+        });
+
+        if (response.ok) {
+          form.reset(); // очистить форму
+          modal.classList.add("hidden");
+          modal.classList.remove("flex");
+          // Changed 2026-10-12 here and in the two calls below: the template's id (showToast's note);
+          // the texts were "Сообщение отправлено!" and "Ошибка отправки. Попробуйте ещё раз.".
+          showToast("contact-toast-sent", "success");
+        } else if (response.status === 429) {
+          showToast("contact-toast-limit", "error");
+        } else {
+          showToast("contact-toast-failed", "error");
+        }
+      } catch (error) {
+        console.error(error);
+        showToast("contact-toast-failed", "error");
+      } finally {
+        sending = false;
+        if (sendButton) sendButton.disabled = false;
+      }
+    });
+  }
+
+  // страховка от bfcache при возврате "назад"
+  window.addEventListener("pageshow", () => {
+    form?.reset();
+  });
+</script>

@@ -1,0 +1,203 @@
+---
+import { site } from "../config";
+// Added 2026-10-12 with the two interface languages (src/i18n/lang.ts): the two labels below are in
+// both languages. The data-*-label attributes carry every language (langAttrs), the inline block
+// picks the one of the class Head.astro set, and the module script writes the label through
+// phrase() and again after every switch (site.i18n.changeEvent).
+import { ui } from "../i18n/strings";
+import { langAttrs } from "../i18n/lang";
+const def = site.i18n.defaultLanguage;
+
+// Changed 2026-09-30, after the colleague asked whether the icon follows every sign-in and
+// sign-out, and saw it lag on a slow machine. Measured in headless Edge on the built site, with the
+// CPU slowed six times and a member's flag set: the page was painted 15 ms to 130 ms before the
+// module script below swapped the icon, so a member first saw the sign-in icon, and a click in that
+// moment went through the sign-in page, which loads Clerk before it sends a member on. And after a
+// sign-out, the Back button brought a page out of the browser's back-forward cache with the
+// document still marked kb-member - the Account menu item showing beside a guest's icon.
+//
+// Three changes:
+// 1. The icons follow the kb-member class that the inline block at the top of Base.astro puts on
+//    the document before the first paint, through the arbitrary variants on the two SVGs (Tailwind,
+//    "Using arbitrary variants"), so the right icon is there from the first frame.
+// 2. The inline block right after the link gives it the account address and label at once when
+//    the document is marked, before the module script has run.
+// 3. The module script keeps the kb-member class in step with the flag whenever it applies it -
+//    on a flag change in this tab (auth-flag.ts sends authFlagEvent now), in another tab (storage),
+//    and when a page comes back from the back-forward cache (pageshow with persisted) - so the
+//    icon, the address and the members-only items can no longer disagree.
+// The labels live in data attributes, so both scripts read the same words.
+//
+// Changed 2026-10-11 (T052): the state no longer comes from a flag in the browser's storage. The server knows the
+// viewer (Astro.locals.viewer, src/middleware.ts) and writes the right address, label and kb-member class into the
+// page itself, so the icon is right in the first byte and a visitor with scripts off sees it too. The module script
+// below only has to keep the page honest when it is shown again from the back-forward cache, by asking
+// `/api/auth/me`; the flag, its storage event and the Clerk pages' flag event are not read here any more.
+const signedIn = Astro.locals.viewer.userId !== null;
+---
+
+<div class="flex flex-1 justify-end">
+  <a
+    id="auth-link"
+    href={signedIn ? site.auth.account : site.auth.signIn}
+    data-signin-href={site.auth.signIn}
+    data-account-href={site.auth.account}
+    {...langAttrs({
+      "data-signin-label": ui.auth_signin,
+      "data-account-label": ui.auth_account,
+    })}
+    class="-mr-2 ml-auto flex items-center justify-center gap-7 self-center p-2 text-gray-600 transition-colors hover:text-blue-600"
+    aria-label={(signedIn ? ui.auth_account : ui.auth_signin)[def]}
+    title={(signedIn ? ui.auth_account : ui.auth_signin)[def]}
+  >
+    <svg
+      id="icon-signin"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke-width="1.5"
+      stroke="currentColor"
+      class="h-6 w-6 [.kb-member_&]:hidden"
+      aria-hidden="true"
+    >
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"
+      ></path>
+    </svg>
+
+    <svg
+      id="icon-user"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      class="hidden h-6 w-6 [.kb-member_&]:block"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="8" r="4"></circle>
+      <path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"></path>
+    </svg>
+  </a>
+  <script is:inline>
+    // Added 2026-09-30 (the note at the top): the account address and label at once for a member,
+    // from the kb-member mark Base.astro's head block has already set. Runs while the page is
+    // being parsed, right after the link exists; the module script below does the rest.
+    (function () {
+      var link = document.getElementById("auth-link");
+      if (link && document.documentElement.classList.contains("kb-member")) {
+        link.setAttribute("href", link.dataset.accountHref);
+        // Changed 2026-10-12: the label of the language the page shows - the lang-<language> class
+        // the block in Head.astro set, and the attribute langAttrs wrote for it - or the default
+        // language's (data-account-label) when there is none. It read dataset.accountLabel alone.
+        var lang = /(?:^|\s)lang-([a-z]+)/.exec(
+          document.documentElement.className,
+        );
+        var label =
+          (lang &&
+            link.getAttribute("data-" + lang[1] + "-data-account-label")) ||
+          link.dataset.accountLabel;
+        link.setAttribute("aria-label", label);
+        link.title = label;
+      }
+    })();
+  </script>
+</div>
+
+<script>
+  // Changed 2026-09-30 (the note at the top): the icons are no longer switched here but follow the
+  // kb-member class through CSS; this script sets that class, the address and the label, and runs
+  // again on every event that can change the flag.
+  // Changed 2026-10-11 (T052): the flag module is not imported here any more (see the note at the top).
+  // Added later on 2026-09-30: a click on the page the icon leads to loads nothing (same-page.ts).
+  import { stayOnPage } from "../scripts/same-page";
+  // Added 2026-10-12: the label in the language the page shows (the note at the top).
+  import { site } from "../config";
+  import { ui } from "../i18n/strings";
+  import { phrase } from "../scripts/lang";
+  const link = document.getElementById("auth-link");
+  function applyAuthState(
+    signedIn = document.documentElement.classList.contains("kb-member"),
+  ) {
+    if (!(link instanceof HTMLAnchorElement)) return;
+    // The same mark the inline block in Base.astro sets before the first paint; custom.css shows
+    // the members-only items by it, and the icons above follow it.
+    document.documentElement.classList.toggle("kb-member", signedIn);
+    const href = signedIn ? link.dataset.accountHref : link.dataset.signinHref;
+    // Changed 2026-10-12: phrase(), the language the page shows; it read the data-*-label attribute.
+    // const label = signedIn
+    //   ? link.dataset.accountLabel
+    //   : link.dataset.signinLabel;
+    const label = phrase(signedIn ? ui.auth_account : ui.auth_signin);
+    if (href) link.href = href;
+    if (label) {
+      link.setAttribute("aria-label", label);
+      link.title = label;
+    }
+    // Added later on 2026-09-30 with the same-page click (same-page.ts): the link says it leads to
+    // the page on show, as the menu's current item already does. Invisible; for screen readers.
+    if (link.pathname === location.pathname) {
+      link.setAttribute("aria-current", "page");
+    } else {
+      link.removeAttribute("aria-current");
+    }
+  }
+  applyAuthState();
+  // Added 2026-10-12: a language switch rewrites the label.
+  document.addEventListener(site.i18n.changeEvent, () => applyAuthState());
+
+  // Added later on 2026-09-30, at the owner's request: one click on the icon, one trip. A second
+  // click on a link makes the browser start the same navigation again, which on a slow connection
+  // restarts the load of the sign-in or account page and looks as if nothing happens. So after the
+  // first plain click the link ignores clicks until the page changes. A click that opens a new tab
+  // or window (a modifier key, the middle button) is not held back, since it leaves this page as
+  // it is. If the navigation is stopped (Esc, the stop button), the hold ends after 5 seconds; a
+  // page brought back by Back starts free again (pageshow below). Clerk itself loads once either
+  // way, on the page the navigation ends on, so what this saves is the repeated page request and
+  // the restart, not a second Clerk.
+  let leaving = false;
+  let release: number | undefined;
+  link?.addEventListener("click", (event) => {
+    if (
+      event.button !== 0 ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    // Added later on 2026-09-30, at the owner's request: on the sign-in page the icon's click does
+    // nothing, and on the account page it brings Clerk's card back to its first tab, with no load
+    // either way (same-page.ts says why). Before the hold below, so it never starts one.
+    if (link instanceof HTMLAnchorElement && stayOnPage(event, link)) return;
+    if (leaving) {
+      event.preventDefault();
+      return;
+    }
+    leaving = true;
+    release = window.setTimeout(() => {
+      leaving = false;
+    }, 5000);
+  });
+
+  // A page restored from the back-forward cache runs no script again, so it is told here.
+  window.addEventListener("pageshow", (event) => {
+    if (!event.persisted) return;
+    // Changed 2026-10-11 (T052): the page may have been left signed in and shown again after a sign-out (or the other
+    // way), so the server is asked who the visitor is now. A failed ask leaves the page as it was.
+    fetch("/api/auth/me", { headers: { Accept: "application/json" } })
+      .then((response) => response.json())
+      .then((body: { viewer: { mustChange: boolean } | null }) => {
+        applyAuthState(body.viewer !== null && !body.viewer.mustChange);
+      })
+      .catch(() => {});
+    // Added with the hold above: a page left by a click and brought back by Back is free again.
+    leaving = false;
+    window.clearTimeout(release);
+  });
+</script>

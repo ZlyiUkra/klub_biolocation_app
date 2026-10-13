@@ -1,0 +1,265 @@
+---
+import Menu from "./Menu.astro";
+import ThemeToggle from "./ThemeToggle.astro";
+import AuthButton from "./AuthButton.astro";
+import { site } from "../config";
+// Added 2026-10-12 with the two interface languages (src/i18n/lang.ts): the language switch beside
+// the menu, and the labels of the magnifier and the menu button in both languages.
+import LangToggle from "./LangToggle.astro";
+import { ui } from "../i18n/strings";
+import { langAttrs } from "../i18n/lang";
+
+const initials = site.title
+  .split(/\s+/u)
+  .filter(Boolean)
+  .map((word) => word[0])
+  .join("")
+  .toUpperCase();
+---
+
+{
+  /* max-w-5xl, not the max-w-4xl the rest of the site uses. The owner allowed this on 2026-09-22,
+  after the reviewer found the bar crowded: Video made a sixth menu item, and six items plus the
+  title and the theme toggle inside 896px pushed everything towards the middle. 1024px gives back
+  roughly what the new item took.
+
+  This is the only element on the site wider than max-w-4xl - main and the footer in Base.astro
+  keep it - so the header no longer lines up with the article card below it above 1024px. That is
+  the price of the change and it was accepted. It is also a departure from the Hugo header, which
+  has one width for everything; REVIEW-VIDEO.md remark 4 records the decision.
+
+  No bespoke class was needed, although the reviewer asked for one: this wrapper has lived in this
+  component since 2026-09-09 (the note at the top of the file says why), so it is already separate
+  from the page's width. Tailwind's own step is the class; a hand-made one would hide the value
+  from anyone reading the markup. */
+}
+{
+  /* The side padding is trimmed between 640px and 1024px, added 2026-09-22 with the sizes in
+  Menu.astro. That is the band where the whole header has to fit on one line - six menu items,
+  the title, the logo and the theme switch - and it was spilling off the right edge, taking the
+  switch with it. 12px a side instead of 24px is 24px back into the row. Below 640px the menu is
+  a hamburger and there is nothing to squeeze, so the padding stays as it was; from 1024px the
+  row fits with room to spare and the header is again what Hugo renders. */
+}
+<div
+  class="mx-auto w-full max-w-5xl overflow-x-auto px-6 sm:overflow-visible sm:px-3 lg:px-6"
+>
+  <div class="flex items-center justify-between py-3">
+    {
+      /* max-w-[70%] below 640px instead of Hugo's max-w-[40%]: the logo takes room the
+      wordmark used to have, and with 40% the title truncated to "Radiesthes...". Above 640px
+      the class is still sm:max-w-md, exactly as Hugo has it. */
+    }
+    {
+      /* min-w-0 and no flex-shrink-0 below 1024px, added 2026-09-22 with the magnifier. The icon
+      costs the row about 32px, and measurement found exactly one band where that does not fit:
+      from 640px, where the full menu replaces the hamburger, to 676px, the row wanted 651px
+      against 616px. Everything wider fits with the sizes tightened earlier today.
+
+      A flex child will not shrink past its content unless it is told it may - flex-shrink-0 said
+      no, and min-width:auto is the default even without it - so the row could only spill. With
+      both off, the name gives up as many pixels as the row is short and `truncate` ends it in an
+      ellipsis: about 35px at 640px, nothing at 680px and above, because shrinking is proportional
+      to need. flex-shrink-0 comes back at 1024px, where the row has room to spare and the header
+      is again exactly what Hugo renders.
+
+      The alternative, and it is the owner's to decide: keep the hamburger until 768px instead of
+      640px, which removes the crowded band altogether rather than truncating anything. He chose
+      640px when the menu had five items and no logo; REVIEW-VIDEO.md remark 4 has the history. */
+    }
+    {
+      /* Changed 2026-09-28 with the menu scroll fix (Menu.astro): sm:shrink-[100] makes the title
+      give way first, as it did before the right-hand group below got min-w-0, so the menu keeps
+      every item in view at 640px to 1023px and scrolls only when it truly does not fit. Without it
+      the two shared the shrinking and the menu hid about 40px at 680px. */
+    }
+    <div
+      class="min-w-0 max-w-[70%] truncate text-lg font-bold sm:max-w-md sm:shrink-[100] sm:text-xl lg:flex-shrink-0"
+    >
+      <a
+        href="/"
+        aria-label={site.title}
+        class="text-gray-900 no-underline transition-colors hover:text-blue-600 dark:text-gray-100 dark:hover:text-blue-300"
+      >
+        {
+          /* The avatar from the About page, doubling as a logo where the wordmark alone has
+          to carry the header. Only below 640px, where the menu is a hamburger; sm:hidden
+          makes it display:none above that, so the desktop header stays byte-identical to
+          Hugo. It is inline-block rather than a flex child on purpose - turning the anchor
+          into a flex container would change how the link itself lays out at every width.
+          alt is empty because the link's own text already says the site name; announcing it
+          twice is worse than not announcing the image at all. */
+        }
+        {
+          /* Changed 2026-09-22, which makes the sentence above half true: sm:hidden is gone. The
+          owner asked for the same logo at every width (REVIEW-VIDEO.md remark 5), so the desktop
+          header is deliberately no longer byte-identical to Hugo's - that parity was the only
+          reason the image was hidden there. It shrinks rather than disappears: h-8 w-8 below
+          640px as before, h-6 w-6 from there up, about the size of a favicon, so the height of
+          the bar stays decided by the text and not by the picture. */
+        }
+        {
+          site.avatar && (
+            <img
+              src={site.avatar}
+              alt=""
+              width="32"
+              height="32"
+              class="mr-2 inline-block h-8 w-8 rounded-full object-cover align-middle ring-1 ring-gray-200 sm:h-6 sm:w-6 dark:ring-slate-700"
+            />
+          )
+        }
+        {
+          /* Under 400px even 70% of the header cannot hold the wordmark next to the logo, and
+          `truncate` turned it into "Radiesthes...", which reads worse than no wordmark at all.
+          Below that width the initials stand in for it. 400px is a judgement call, not a
+          measurement: it is roughly where "Radiesthesia Club" stops fitting at text-lg beside a
+          32px logo, and `min-[400px]:` is an arbitrary variant so no Tailwind screen had to be
+          invented for one rule. The anchor carries aria-label, so the accessible name stays the
+          full site title at every width no matter which of the two spans is painted. */
+        }
+        {
+          /* Changed 2026-10-12 from 400px to 440px: the language switch (LangToggle.astro) took
+          another control's width out of the row, and the wordmark was cut short from 400px to
+          434px ("Radiesthesia Clu..."), measured in headless Edge in both languages, signed in and
+          out. From 436px it fits whole; 440px leaves a little room for a wider font. */
+        }
+        <span class="min-[440px]:hidden">{initials}</span>
+        <span class="hidden min-[440px]:inline">{site.title}</span>
+      </a>
+    </div>
+    {
+      /* Changed 2026-09-28: min-w-0, so this group can be narrower than the menu inside it and the
+      menu's own scrolling takes over (Menu.astro has the reason). */
+    }
+    <div class="flex min-w-0 items-center gap-2">
+      <Menu />
+      {
+        /* Added 2026-10-12 at the owner's request: the interface language switch, beside the menu
+        at every width - right after the row of items from 640px up, first of the controls below
+        it, where the menu is the hamburger. */
+      }
+      <LangToggle />
+      {
+        /* Changed 2026-09-22 at the owner's request: the switch stays in the bar at every width
+        and no longer moves into the drop-down panel when the menu opens. It used to carry
+        `hidden sm:inline-flex`, so below 640px the bar hid it and the panel showed a second
+        instance under a "Theme" row; the owner asked for the arrangement in the reference he
+        sent, where the switch sits in the bar beside the close button and the panel holds the
+        menu and nothing else. The button is written after the hamburger now so that it is the
+        last control on the row at every width, which is where it already sat on a desktop. */
+      }
+      {
+        /* The magnifier, added 2026-09-22 with /search/. It is a link and not a button: the
+        search lives at an address of its own, so it has to be openable in a new tab, and a
+        visitor without JavaScript still reaches a page that explains itself. First of the three
+        controls at every width - search, menu, theme - which is the order in the reference the
+        owner sent. The label is on the link, since an aria-hidden icon leaves it without a name. */
+      }
+      {
+        /* members-only, added the evening of 2026-09-25 with the guest gate (AUTH.md section 10):
+        the search reads the index of the articles and the lectures, which a guest does not get,
+        and the owner's header for a guest is Home, the theme switch and the sign-in icon. Hidden
+        by custom.css until the gate in Base.astro marks the document kb-member; /search/ itself
+        is a closed page anyway. */
+      }
+      {
+        /* Reopened on 2026-09-25 after the colleague's review (AUTH.md section 11): the search is for everyone again. */
+      }
+      <a
+        href="/search/"
+        {...langAttrs({ "aria-label": ui.search_label })}
+        class="relative inline-flex h-7 w-7 cursor-pointer items-center justify-center text-gray-700 no-underline transition-colors hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-300"
+      >
+        <svg
+          class="h-5 w-5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="7"></circle>
+          <path d="M20 20l-3.5-3.5"></path>
+        </svg>
+      </a>
+
+      {
+        /* members-only, added later on the evening of 2026-09-25 at the owner's word: a guest keeps
+        the theme switch and the sign-in icon and nothing else in the bar, so the hamburger goes with
+        the menu it opens (every item but Home is hidden for a guest already, and the panel would show
+        one word). Hidden by custom.css until the gate in Base.astro marks the document kb-member
+        (AUTH.md section 10). */
+      }
+      {
+        /* Reopened on 2026-09-25 after the colleague's review (AUTH.md section 11): the hamburger is for everyone again. */
+      }
+      {
+        /* Changed 2026-09-30, from a Tailwind 3.4 audit the owner ordered: a keyboard focus ring
+        next to focus:outline-none, which had left no sign of focus on this button (Outline Style,
+        "Removing outlines"). It copies its classes from ThemeToggle.astro, but that button's focus
+        ring comes from main.css through the theme-toggle-btn class, which this one does not carry;
+        the ring here is the same one - 3px of rgb(59 130 246 / 0.45), 6px corners - so the two
+        buttons side by side in the header show the same focus. */
+      }
+      <button
+        id="menu-toggle"
+        type="button"
+        class="relative inline-flex h-7 w-7 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-gray-700 focus:outline-none focus-visible:rounded-md focus-visible:ring-[3px] focus-visible:ring-[rgb(59_130_246/0.45)] sm:hidden dark:text-gray-200"
+        {...langAttrs({ "aria-label": ui.menu_open })}
+        aria-expanded="false"
+        aria-controls="site-menu"
+      >
+        <svg
+          data-menu-icon="open"
+          class="h-6 w-6"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path d="M4 7h16M4 12h16M4 17h16"></path>
+        </svg>
+        <svg
+          data-menu-icon="close"
+          class="hidden h-6 w-6"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path d="M6 6l12 12M18 6L6 18"></path>
+        </svg>
+      </button>
+
+      {
+        /* ml-1 below 1024px, ml-2 above: at exactly 640px, where the menu appears, the row was
+        still 3px wider than the space it had. Measured, like the rest of this band. */
+      }
+      <ThemeToggle class="ml-1 inline-flex lg:ml-2" />
+      <AuthButton />
+    </div>
+  </div>
+</div>
+
+<div id="site-menu" class="sm:hidden" hidden>
+  {
+    /* Widened with the bar above on 2026-09-22 so the two cannot drift apart. Nothing visible
+    changes here: the panel only exists below 640px, where the viewport is narrower than either
+    limit and mx-auto has nothing to centre. */
+  }
+  <div class="mx-auto w-full max-w-5xl px-6 pb-4">
+    <Menu variant="panel" />
+    {
+      /* The "Theme" row that stood here - a label and a second ThemeToggle - was removed on
+      2026-09-22 with the change above. The panel holds the menu and nothing else now, and the
+      document carries one theme button instead of two, so nothing has to be kept in sync
+      between them. */
+    }
+  </div>
+</div>

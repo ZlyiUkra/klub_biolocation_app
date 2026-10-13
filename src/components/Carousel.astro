@@ -1,0 +1,185 @@
+---
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { site } from "../config";
+// Added 2026-09-22: the stylesheet that used to be the `css` template literal in this file. Astro
+// bundles it with the rest of the page's CSS; it stays global rather than scoped, because its
+// selectors reach html, main and the theme's own markup, which a scoped rule cannot. It is
+// imported here rather than in Base.astro so that it only reaches the page the carousel is on.
+//
+// It has to sit with the other imports, at the top: placed after the const declarations below,
+// esbuild rejects the file with `Unexpected "../styles/carousel.css"` and the build fails.
+import "../styles/carousel.css";
+// Added 2026-10-12 with the two interface languages (src/i18n/lang.ts): every label and every
+// photo's description in both languages, as language-dependent attributes.
+import { ui } from "../i18n/strings";
+import { langAttrs, type Phrase } from "../i18n/lang";
+
+// Changed 2026-10-10 (T032 of specs/001-self-hosted-club-site): the folder was found relative to this file
+// (`new URL("../../public/images/carousel", import.meta.url)`), which is what it was before the site got a server
+// adapter. With `output: "server"` the page is bundled into dist/server/chunks and import.meta.url moves with it, so
+// the lookup missed the folder, the slide list came out empty and the home page lost its carousel without a word
+// (found by comparing the built pages byte for byte). It is found from the working directory now - the project root in
+// `astro dev` and `astro build`, the application's root in production - first in public/, then in dist/client/, where
+// the build copies it for a server that no longer has public/.
+const dir =
+  [
+    path.join(process.cwd(), "public", "images", "carousel"),
+    path.join(process.cwd(), "dist", "client", "images", "carousel"),
+  ].find((candidate) => fs.existsSync(candidate)) ??
+  fileURLToPath(new URL("../../public/images/carousel", import.meta.url));
+const extensions = [".jpg", ".jpeg", ".png", ".webp", ".avif"];
+
+const slides = fs.existsSync(dir)
+  ? fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isFile() &&
+          extensions.includes(path.extname(entry.name).toLowerCase()),
+      )
+      .map((entry) => entry.name)
+      .sort()
+  : [];
+
+const interval = site.carousel.interval;
+
+// Changed 2026-10-12: each description in both languages; the English ones are the ones that stood
+// here. They stay in this file rather than in src/i18n/strings.ts because they describe these
+// files, by name, and change with them.
+const alts: Record<string, Phrase> = {
+  "01.jpg": {
+    ru: "Водопад в зелёном лесу",
+    en: "Waterfall in a green forest",
+  },
+  "02.jpg": {
+    ru: "Гранитные скалы и лес над рекой",
+    en: "Granite cliffs and forest above a river",
+  },
+  "03.jpg": { ru: "Зелёные холмы в тумане", en: "Green hills in the mist" },
+  "04.jpg": {
+    ru: "Скалистый берег и бирюзовое море",
+    en: "Rocky coast and turquoise sea",
+  },
+  "05.jpg": { ru: "Красный каньон на закате", en: "Red canyon at sunset" },
+  "06.jpg": {
+    ru: "Северное сияние над лесом",
+    en: "Northern lights over a forest",
+  },
+};
+
+// `hidden` is a valid global HTML attribute on an inline SVG element, but Astro's
+// SVGAttributes type does not list it. Spreading the object keeps the attribute without
+// weakening the type of the rest of the element.
+const hiddenAttr = { hidden: true };
+---
+
+{
+  slides.length > 0 && (
+    <Fragment>
+      <section
+        id="home-carousel"
+        class="void-carousel"
+        aria-roledescription="carousel"
+        {...langAttrs({ "aria-label": ui.carousel_label })}
+        data-interval={interval}
+      >
+        {slides.map((name, i) => (
+          <div
+            class:list={["void-carousel__slide", i === 0 && "is-active"]}
+            role="group"
+            aria-roledescription="slide"
+            {...langAttrs({
+              "aria-label": ui.carousel_slide(i + 1, slides.length),
+            })}
+            aria-hidden={i !== 0 ? "true" : undefined}
+          >
+            <img
+              src={`/images/carousel/${name}`}
+              {...langAttrs({
+                alt: alts[name] ?? ui.carousel_photo_alt(i + 1),
+              })}
+              width="1600"
+              height="700"
+              decoding="async"
+              fetchpriority={i === 0 ? "high" : undefined}
+              loading={i !== 0 ? "lazy" : undefined}
+            />
+          </div>
+        ))}
+
+        <button
+          type="button"
+          class="void-carousel__btn void-carousel__btn--prev"
+          {...langAttrs({ "aria-label": ui.carousel_prev })}
+        >
+          &#8249;
+        </button>
+        <button
+          type="button"
+          class="void-carousel__btn void-carousel__btn--next"
+          {...langAttrs({ "aria-label": ui.carousel_next })}
+        >
+          &#8250;
+        </button>
+        <button
+          type="button"
+          class="void-carousel__toggle"
+          {...langAttrs({ "aria-label": ui.carousel_pause })}
+          aria-pressed="false"
+        >
+          <svg
+            class="void-carousel__icon-pause"
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+          >
+            <rect x="3" y="2" width="4" height="12" rx="1" />
+            <rect x="9" y="2" width="4" height="12" rx="1" />
+          </svg>
+          <svg
+            class="void-carousel__icon-play"
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+            {...hiddenAttr}
+          >
+            <path d="M4 2.5v11a1 1 0 0 0 1.5.87l9-5.5a1 1 0 0 0 0-1.74l-9-5.5A1 1 0 0 0 4 2.5z" />
+          </svg>
+        </button>
+        <div
+          class="void-carousel__dots"
+          role="tablist"
+          {...langAttrs({ "aria-label": ui.carousel_choose })}
+        >
+          {slides.map((_, i) => (
+            <button
+              type="button"
+              role="tab"
+              class:list={["void-carousel__dot", i === 0 && "is-active"]}
+              {...langAttrs({ "aria-label": ui.carousel_dot(i + 1) })}
+              aria-selected={i === 0 ? "true" : "false"}
+              data-index={i}
+            />
+          ))}
+        </div>
+      </section>
+    </Fragment>
+  )
+}
+
+{
+  /* Changed 2026-09-22: was <script is:inline set:html={js} /> inside the block above, the second
+  of this file's two template literals. The behaviour is src/scripts/carousel.ts now, imported the
+  way Base.astro imports site.ts, so Astro bundles it and astro check reads it.
+
+  The tag sits here, at the top level of the template, and not where the literal was. Measured:
+  inside the `slides.length > 0 &&` expression the script was not hoisted into the page bundle at
+  all - the built home page carried no carousel code and the carousel would have been dead markup.
+  An is:inline block survived there because it is rendered as part of the markup rather than
+  collected from the module graph, which is why the move needed this change and the literal did
+  not. Rendering it unconditionally costs nothing: carousel.ts opens by looking for #home-carousel
+  and returns when it is absent, so a home page with no photos loads a script that does nothing. */
+}
+<script>
+  import "../scripts/carousel";
+</script>

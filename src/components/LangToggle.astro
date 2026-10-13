@@ -1,0 +1,33 @@
+---
+// The interface language switch beside the menu, added 2026-10-12 at the owner's request (site.i18n
+// in src/config.ts). It shows the language the page is in - RU or EN, through T like any other text,
+// so it is right before any script runs - and a press moves to the other one; src/scripts/lang.ts
+// binds every [data-lang-toggle] and remembers the choice. One button rather than a list, because
+// there are two languages; the label says which one a press leads to.
+//
+// The classes follow the theme switch beside it (ThemeToggle.astro) and the menu button's focus ring
+// (Header.astro), so the three controls of the bar look and focus alike. min-w-7 rather than w-7:
+// the two letters are wider than an icon in some fonts.
+import { ui } from "../i18n/strings";
+import { langAttrs } from "../i18n/lang";
+import T from "./T.astro";
+
+interface Props {
+  /** Extra classes, for the caller to place it. */
+  class?: string;
+}
+
+const { class: className } = Astro.props;
+---
+
+<button
+  data-lang-toggle
+  type="button"
+  class:list={[
+    "relative inline-flex h-7 min-w-7 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent px-1 text-sm font-semibold text-gray-700 transition-colors hover:text-blue-600 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-[rgb(59_130_246/0.45)] dark:text-gray-200 dark:hover:text-blue-300",
+    className,
+  ]}
+  {...langAttrs({ "aria-label": ui.lang_switch, title: ui.lang_switch })}
+>
+  <T s={ui.lang_current} />
+</button>

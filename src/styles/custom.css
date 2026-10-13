@@ -1,0 +1,187 @@
+/* ---------------------------------------------------------------------------
+   Site colours and any other custom CSS.
+
+   This file is loaded by layouts/partials/head.html AFTER the theme stylesheet,
+   so everything here wins over the theme. It is plain CSS: Tailwind never sees
+   it, so `@apply` and other Tailwind directives do not work here - and a typo
+   in this file can never break the build.
+
+   Normal workflow: change a colour in the two palette blocks below and save.
+   `npm run dev` reloads the page by itself.
+
+   The rules further down are what actually paint the colours. They look
+   over-specific (`html.dark .bg-white`) on purpose: the theme sets these
+   colours with Tailwind utility classes and with `!important` dark-mode rules,
+   so an override has to be at least as specific to win. See README.md,
+   "Colours and custom CSS", for the full explanation.
+   --------------------------------------------------------------------------- */
+
+/* Light theme palette. These are the theme's own defaults, so light mode looks
+   exactly as it did before this file existed. */
+:root {
+  --page-bg: #f5f5f4; /* page background, and the footer strip */
+  --panel-bg: #fafaf9; /* top header bar, post cards, About card */
+}
+/* Changed in commit 125643b (2026-09-19): the two values above are no longer the theme's
+   defaults the comment before the block describes. The page is Tailwind's stone-100 and the
+   panels stone-50, a warmer grey than the theme's gray-50 (#f9fafb) and white (#ffffff).
+   The dark palette below is untouched. Recorded as a design departure in MIGRATION-PLAN.md,
+   section 9; the anti-flash style in Head.astro reads --page-bg, so it needs no change. */
+
+/* Dark theme palette. Hugo puts class="dark" on the <html> element when the
+   visitor switches the theme with the sun/moon button in the header.
+   Currently set to dark blue. The theme's own defaults are kept commented out
+   inside the block: to go back, comment the two active lines and uncomment the
+   two below them.*/
+html.dark {
+  /* --page-bg: #0b1e3d;
+  --panel-bg: #12294f; */
+
+  --page-bg: #071429;
+  --panel-bg: #11213b;
+
+  /* Previous values (void theme defaults, near-black navy):
+  --page-bg: #0b1220;
+  --panel-bg: #0f172a;
+  */
+}
+
+/* --- Rules: do not edit unless you want to re-target something ------------ */
+
+/* Page background. `html body` also covers the theme's `bg-gray-50` on <body>;
+   the second selector is needed only because the theme's dark rule uses
+   `!important`. */
+html body,
+html .bg-gray-50 {
+  background-color: var(--page-bg) !important;
+}
+
+html.dark body,
+html.dark .bg-gray-50 {
+  background-color: var(--page-bg) !important;
+}
+
+/* Panels: the sticky header bar and every white card (post list, About page). */
+html .bg-white {
+  background-color: var(--panel-bg) !important;
+}
+
+html.dark .bg-white {
+  background-color: var(--panel-bg) !important;
+}
+
+/* Added 2026-09-30, from a Tailwind 3.4 audit the owner ordered. The rule above paints every
+   `.bg-white` with `!important`, and a utility without it cannot win, so the hover backgrounds of
+   the white controls never showed in light mode: `hover:bg-gray-50` on the pagination, the year
+   switcher and the buttons of the account page, `hover:bg-blue-50/30` on the previous and next
+   cards under an article. The grey ones were never broken in dark mode - main.css has
+   `.dark .hover\:bg-gray-50:hover` with `!important` - so these rules are for light mode only, and
+   the class names in the components stay as they are, because that dark rule finds them by name.
+   The grey is one step darker than the class says: the theme's author went from white to gray-50,
+   but the panels here are already #fafaf9, which gray-50 (#f9fafb) cannot be told from, so the
+   same step from this panel is gray-100 (#f3f4f6). The blue is the class's own value, blue-50 at
+   30%. Like every hover, both get their :active twin from postcss.config.cjs. */
+html:not(.dark) .bg-white.hover\:bg-gray-50:hover {
+  background-color: #f3f4f6 !important;
+}
+
+html:not(.dark) .bg-white.hover\:bg-blue-50\/30:hover {
+  background-color: rgb(239 246 255 / 0.3) !important;
+}
+
+/* --- Your own rules go below ---------------------------------------------- */
+
+/* Examples - remove the surrounding comment markers to switch one on.
+
+   Link colour inside articles:
+
+   html .prose a {
+     color: #7c3aed !important;
+   }
+   html.dark .prose a {
+     color: #c4b5fd !important;
+   }
+
+   Site title in the header:
+
+   html header a {
+     color: #7c3aed !important;
+   }
+
+   Softer shadow under the header bar:
+
+   html header {
+     box-shadow: none !important;
+     border-bottom: 1px solid #e5e7eb;
+   }
+*/
+
+/* === TRIAL: scrollbar painted in the site's own colours =====================
+   Added 2026-09-09 at the owner's request, and written as one self-contained
+   block on purpose.
+
+   TO REVERT: delete everything from this header down to the "end of trial"
+   line. Nothing else in the project refers to it and no build step depends on
+   it, so the deletion is complete and safe on its own.
+
+   Why it is here: the home carousel runs edge to edge, and beside it the
+   browser's default scrollbar reads as a grey notch cut out of the photo. A
+   page can never paint UNDER a classic scrollbar - that strip is browser
+   chrome, not page area - but it can ask for its colours.
+
+   scrollbar-color takes <thumb> <track>. It is the standard property, honoured
+   by Chromium from 121 and Firefox from 64; anything older keeps its default
+   scrollbar, so there is no fallback to write and nothing to feature-detect.
+
+   The track reuses --page-bg, so it follows the palette blocks at the top of
+   this file automatically. The thumb is a literal because it has to stay
+   visible against that background, which a variable would not guarantee.
+   =========================================================================== */
+html {
+  scrollbar-color: #c5ccd6 var(--page-bg);
+}
+
+html.dark {
+  scrollbar-color: #1f3f6b var(--page-bg);
+}
+/* === end of trial: scrollbar colour ======================================== */
+
+/* === Guest gate (added 2026-09-25 evening, AUTH.md section 10) ===============
+   The owner's decision: a guest sees the carousel on the home page and nothing
+   else, the rest of the site only after signing in. The inline block at the top
+   of the head in Base.astro marks the document kb-member while the auth pages'
+   flag is valid; until then nothing carrying members-only is painted - the home
+   page below the carousel, every menu item but Home, the search icon. Closed
+   pages never get this far: the same block replaces them with the sign-in page.
+
+   display:none and not visibility, so the hidden blocks take no space.
+   !important for the same reason as the rest of this file: Tailwind's flex,
+   sm:flex and friends on those elements would otherwise win. Presentation only:
+   the data is protected by the service that holds it, this rule keeps a
+   guest from seeing the frame.
+   (Reworded 2026-09-26 for the move to Clerk: the sentence above named the
+   previous auth provider, which CLERK.md section 0 orders out of this branch.)
+   ============================================================================ */
+/* Reopened on 2026-09-25 after the colleague's review (AUTH.md section 11): the site is open again, and the only
+   element carrying members-only is the Account item of the menu. The rule is
+   unchanged; the list of what it hides shrank to that item. */
+html:not(.kb-member) .members-only {
+  display: none !important;
+}
+
+/* === Interface languages (added 2026-10-12, the owner's request) ============
+   Every interface string is in the page in both languages, one span each
+   (src/components/T.astro, setPhrase() in src/scripts/lang.ts). The inline
+   block in Head.astro marks the document lang-ru before the first paint when
+   the visitor chose Russian; without the class the page is English, the
+   default (site.i18n.defaultLanguage in src/config.ts) - which is also what a
+   visitor without JavaScript gets. These two rules hide the spans of the
+   language not shown. Written for that default: if it changes, swap ru and en
+   here. A third language would need a rule of its own.
+   display:none, so the hidden text takes no space and a screen reader skips
+   it; !important for the reason the guest gate above gives.
+   ============================================================================ */
+html:not(.lang-ru) [data-lang="ru"],
+html.lang-ru [data-lang="en"] {
+  display: none !important;
+}

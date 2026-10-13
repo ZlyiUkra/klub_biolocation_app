@@ -1,0 +1,427 @@
+/* The comments block under a post or a video (T106 of specs/001-self-hosted-club-site), written on 2026-10-13 to look as
+   close as it can to the block of the previous comment service, which the owner asked for: the count in bold over a
+   line, the sign-in link at the right, a round letter avatar, a rounded field that says "Start the discussion...", and
+   the comments below it, newest first.
+
+   Kept out of a <style> block of the component on purpose, like src/styles/search.css: every comment is created by
+   src/scripts/comments.ts in the browser, and Astro's scoped CSS stamps its attribute onto the elements the component
+   renders itself, so a scoped rule would match nothing here. A .css file is global. .dark is the class Head.astro puts
+   on <html>. The colours are theme() calls, as in search.css, so that they are the pinned palette's values.
+
+   The look of the six reactions above this block is src/styles/reactions.css (T187). */
+
+.comments {
+  margin: 2.5rem 0 1rem;
+}
+
+/* ---------- the button above the block (added 2026-10-13, T106) ----------
+   The look of the previous service's reveal button on this site: outlined like the previous/next cards under an
+   article (a thin gray-200 line, which dark mode paints slate-700), rounded-lg corners, centred above the block. */
+
+.comments .comments-toggle-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+}
+
+/* `display: flex` above would beat the attribute, so the hidden state is written out. */
+.comments .comments-toggle-row[hidden] {
+  display: none;
+}
+
+.comments .comments-toggle {
+  border: 1px solid theme(colors.gray.200);
+  border-radius: 0.5rem;
+  background: transparent;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  font-size: 1rem;
+  color: theme(colors.gray.600);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background-color 0.15s;
+}
+
+.comments .comments-toggle:hover {
+  background: theme(colors.gray.100);
+  color: theme(colors.gray.900);
+}
+
+.dark .comments .comments-toggle {
+  border-color: theme(colors.slate.700);
+  color: theme(colors.gray.200);
+}
+
+.dark .comments .comments-toggle:hover {
+  background: theme(colors.slate.800);
+  color: theme(colors.white);
+}
+
+@media (min-width: 768px) {
+  .comments .comments-toggle {
+    padding: 0.5rem 0.75rem;
+    font-size: 1.125rem;
+  }
+}
+
+/* ---------- the head: count at the left, the account at the right ---------- */
+
+.comments .comments-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 2px solid theme(colors.gray.300);
+  padding-bottom: 0.5rem;
+}
+
+.dark .comments .comments-head {
+  border-bottom-color: theme(colors.slate.600);
+}
+
+/* Every rule of this file has one class more than the article styles of main.css, which reach this block because it
+   stands inside the article: `.prose h2` (a size, margins, a line under it), `.prose ol` (a left padding),
+   `.article-prose li + li` (a gap), `.article-prose p` (a bottom margin) and `.prose a` (blue and underlined, which
+   `.dark .prose a` repeats). The first version of this file did not win against them: the count came out large with a
+   line under it and the list indented, which the owner's screenshot does not have. The rules below name what they
+   take back. */
+.comments .comments-count {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: theme(colors.gray.700);
+}
+
+.dark .comments .comments-count {
+  color: theme(colors.gray.300);
+}
+
+.comments .comments-account {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: theme(colors.gray.700);
+}
+
+.dark .comments .comments-account {
+  color: theme(colors.gray.300);
+}
+
+.comments .comments-account a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.comments .comments-account a:hover {
+  color: theme(colors.blue.600);
+}
+
+/* `.dark .prose a` paints a link blue; the sign-in link of the head is the colour of the line, as the previous
+   service's was, and turns blue only on hover. */
+.dark .comments .comments-account a {
+  color: inherit;
+}
+
+.dark .comments .comments-account a:hover {
+  color: theme(colors.blue.300);
+}
+
+/* ---------- the avatar: a round letter ---------- */
+
+.comments .comments-avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 9999px;
+  /* The colour of the guest's letter in the previous service; a named account gets one of the tints below. */
+  background: #5b9cf5;
+  color: #1e293b;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.comments .comments-avatar[data-tint="1"] {
+  background: #f59e8b;
+}
+.comments .comments-avatar[data-tint="2"] {
+  background: #f5c85b;
+}
+.comments .comments-avatar[data-tint="3"] {
+  background: #7fd1a0;
+}
+.comments .comments-avatar[data-tint="4"] {
+  background: #b79cf5;
+}
+.comments .comments-avatar[data-tint="5"] {
+  background: #5bd1d7;
+}
+
+/* ---------- the composer ---------- */
+
+.comments .comments-composer {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.comments .comments-composer-box {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.comments .comments-field {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 3.25rem;
+  resize: none;
+  border: 2px solid theme(colors.gray.300);
+  border-radius: 1rem;
+  background: theme(colors.gray.50);
+  padding: 0.85rem 1.1rem;
+  font: inherit;
+  line-height: 1.4;
+  color: theme(colors.gray.900);
+}
+
+.dark .comments .comments-field {
+  border-color: theme(colors.slate.600);
+  background: rgb(255 255 255 / 0.05);
+  color: theme(colors.gray.100);
+}
+
+.comments .comments-field::placeholder {
+  color: theme(colors.gray.500);
+}
+
+.dark .comments .comments-field::placeholder {
+  color: theme(colors.gray.400);
+}
+
+.comments .comments-field:focus {
+  outline: none;
+  border-color: theme(colors.blue.600);
+}
+
+.comments .comments-field[readonly] {
+  cursor: default;
+}
+
+.comments .comments-composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+}
+
+.comments .comments-composer-actions[hidden] {
+  display: none;
+}
+
+.comments .comments-button {
+  border: 0;
+  border-radius: 0.5rem;
+  background: theme(colors.blue.600);
+  padding: 0.5rem 1.1rem;
+  font: inherit;
+  font-weight: 700;
+  color: theme(colors.white);
+  cursor: pointer;
+}
+
+.comments .comments-button:hover {
+  background: theme(colors.blue.700);
+}
+
+.comments .comments-button[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.comments .comments-button-quiet {
+  background: transparent;
+  color: theme(colors.gray.600);
+}
+
+.comments .comments-button-quiet:hover {
+  background: transparent;
+  color: theme(colors.gray.900);
+}
+
+.dark .comments .comments-button-quiet {
+  color: theme(colors.gray.300);
+}
+
+.dark .comments .comments-button-quiet:hover {
+  color: theme(colors.white);
+}
+
+/* ---------- notes and messages ---------- */
+
+.comments .comments-note,
+.comments .comments-message,
+.comments .comments-status {
+  margin: 0.75rem 0 0 3.5rem;
+  font-size: 0.9rem;
+  color: theme(colors.gray.600);
+}
+
+.dark .comments .comments-note,
+.dark .comments .comments-status {
+  color: theme(colors.gray.400);
+}
+
+.comments .comments-note a {
+  color: theme(colors.blue.600);
+}
+
+.dark .comments .comments-note a {
+  color: theme(colors.blue.300);
+}
+
+.comments .comments-message {
+  color: theme(colors.red.700);
+}
+
+.dark .comments .comments-message {
+  color: theme(colors.red.300);
+}
+
+.comments .comments-message[hidden],
+.comments .comments-note[hidden],
+.comments .comments-status[hidden] {
+  display: none;
+}
+
+/* ---------- the list ---------- */
+
+.comments .comments-list {
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.comments .comment {
+  display: flex;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.9rem 0;
+}
+
+.comments .comment + .comment {
+  border-top: 1px solid theme(colors.gray.200);
+}
+
+.dark .comments .comment + .comment {
+  border-top-color: rgb(255 255 255 / 0.1);
+}
+
+.comments .comment-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.comments .comment-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.6rem;
+}
+
+.comments .comment-author {
+  font-weight: 700;
+  color: theme(colors.gray.900);
+}
+
+.dark .comments .comment-author {
+  color: theme(colors.gray.100);
+}
+
+.comments .comment-time,
+.comments .comment-flag {
+  font-size: 0.85rem;
+  color: theme(colors.gray.500);
+}
+
+.dark .comments .comment-time,
+.dark .comments .comment-flag {
+  color: theme(colors.gray.400);
+}
+
+.comments .comment-flag-hidden {
+  border-radius: 0.25rem;
+  background: theme(colors.gray.200);
+  padding: 0 0.4rem;
+  color: theme(colors.gray.700);
+}
+
+.dark .comments .comment-flag-hidden {
+  background: rgb(255 255 255 / 0.12);
+  color: theme(colors.gray.200);
+}
+
+/* A comment is text: the line breaks the author typed are kept, nothing is interpreted. */
+.comments .comment-body {
+  margin: 0.35rem 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: theme(colors.gray.800);
+}
+
+.dark .comments .comment-body {
+  color: theme(colors.gray.200);
+}
+
+.comments .comment[data-hidden="true"] .comment-body,
+.comments .comment[data-hidden="true"] .comment-author {
+  opacity: 0.55;
+}
+
+.comments .comment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin-top: 0.4rem;
+}
+
+.comments .comment-action {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: theme(colors.gray.500);
+  cursor: pointer;
+}
+
+.comments .comment-action:hover {
+  color: theme(colors.blue.600);
+}
+
+.comments .comment-editor .comments-field {
+  margin-top: 0.35rem;
+}
+
+@media (max-width: 480px) {
+  .comments .comments-avatar {
+    width: 2.25rem;
+    height: 2.25rem;
+    font-size: 1.2rem;
+  }
+
+  .comments .comments-note,
+  .comments .comments-message,
+  .comments .comments-status {
+    margin-left: 0;
+  }
+}

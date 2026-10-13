@@ -1,0 +1,70 @@
+---
+// The year switcher under the title of the Posts list. Added 2026-09-19, asked for by the
+// owner; the theme has nothing like it. It was a block inside CardList.astro until later that
+// day, when the owner asked for it to be a component of its own with its own rule, separate
+// from the page numbers in Pagination.astro. Which years it shows is decided by yearSwitcher()
+// in lib/posts.ts: every year up to pagination.everyYearUpTo of them, beyond that the newest,
+// the oldest and the year being shown with its neighbours, with an ellipsis for hidden years.
+//
+// Every button leads to the first page of its year, /posts/<year>/, the year being shown
+// included; that one is highlighted and carries aria-current. Nothing renders while the posts
+// span a single year. The buttons use the classes of the theme's Previous and Next buttons from
+// list.html, and the highlighted one the colours of the theme's year badges, so they match both
+// colour schemes; the ellipsis is the one of the page numbers. Only the Posts route passes the
+// years; the category pages, which share CardList.astro, have no switcher (PAGINATION.md,
+// section 4). scripts/check-pagination.mjs reads this markup back: keep the nav's aria-label
+// and the shape of the links if it changes.
+// lib/lists.ts since 2026-09-22, when the list helpers left lib/posts.ts so that posts and
+// videos stay apart and share only what is common (VIDEO-PAGE.md, section 4).
+import type { YearLink } from "../lib/lists";
+import { yearSwitcher } from "../lib/lists";
+// Added 2026-10-12 with the two interface languages (src/i18n/lang.ts): the nav's label in both;
+// data-year-switcher is what scripts/check-pagination.mjs finds the nav by since then, because the
+// label it used to match now changes with the language.
+import { ui } from "../i18n/strings";
+import { langAttrs } from "../i18n/lang";
+
+interface Props {
+  /** Every year with posts, newest first, from yearLinks(). */
+  years: YearLink[];
+  /** The year being shown, e.g. "2025". */
+  currentYear: string;
+}
+
+const { years, currentYear } = Astro.props;
+const entries = yearSwitcher(years, currentYear);
+---
+
+{
+  years.length > 1 && (
+    <nav
+      data-year-switcher
+      {...langAttrs({ "aria-label": ui.years_label })}
+      class="-mt-4 mb-8 flex flex-wrap justify-center gap-2"
+    >
+      {entries.map((entry) =>
+        entry.kind === "gap" ? (
+          <span
+            aria-hidden="true"
+            class="px-1 py-1 text-sm text-gray-500 dark:text-gray-400"
+          >
+            &hellip;
+          </span>
+        ) : (
+          <a
+            href={entry.url}
+            aria-current={entry.current ? "true" : undefined}
+            class:list={[
+              "rounded-md px-3 py-1 text-sm shadow-sm transition-colors",
+              entry.current
+                ? "bg-blue-50 text-blue-700 dark:bg-slate-700 dark:text-blue-300"
+                : "bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-900 dark:text-gray-300 dark:hover:bg-slate-800",
+            ]}
+          >
+            {entry.year}
+          </a>
+        ),
+      )}
+    </nav>
+  )
+}

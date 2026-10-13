@@ -1,0 +1,38 @@
+{
+  // Added 2026-10-10 (task T002 of specs/001-self-hosted-club-site). The backend is its own TypeScript project,
+  // separate from the Astro one: the root tsconfig.json extends Astro's presets and excludes this folder, and this
+  // file compiles to plain Node 20 modules in server/dist.
+  //
+  // "module" and "moduleResolution" are both NodeNext on purpose: TypeScript 5.2 and later require the two to agree
+  // under the Node settings, and NodeNext is the setting for a current Node.js project (typescript-docs, modules
+  // reference). NodeNext also implies esModuleInterop, so it is not repeated here. "target" is set to ES2022 on
+  // purpose instead of the implied esnext: it is what Node 20 runs, so nothing is emitted that the runtime cannot
+  // read. Relative imports in the sources end in ".js", which is what Node resolves at run time.
+  //
+  // rootDir is the folder itself so that src/ and test/ compile side by side (node:test runs the compiled test
+  // files); the output lands in server/dist/src and server/dist/test.
+  //
+  // Changed 2026-10-10 (T025): rootDir is the repository root now, one level up. The backend and the site must run
+  // the same rules (a card summary, a post's address, the Markdown options), and those files live in the site's
+  // src/ so that there is one copy. TypeScript refuses to compile a file outside rootDir, so the root had to
+  // move; the cost is that the output is one level deeper: server/dist/server/src, server/dist/server/test, and
+  // the shared files at server/dist/src. The shared files are the plain modules src/lib/{date,summary,post-url}.ts,
+  // src/content/post-fields.ts and src/markdown/*.ts, which import nothing from Astro (server/test/shared.test.ts
+  // fails if one starts to). The files that reach this program are only the ones the server imports.
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "rootDir": "..",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["dist", "node_modules"]
+}

@@ -1,0 +1,405 @@
+---
+// The article frame: the page every post and every video is read on. The Base layout, the
+// card with its header (category label, title, date, the clock item, page views, Share), the
+// collapsible table of contents, an optional media block, the body, the "last updated" line,
+// the footer with the tags, the previous/next links and the home link - and, to the right of
+// the card on wide windows, the table-of-contents sidebar.
+//
+// Neutral since 2026-09-22 (VIDEO-PAGE.md, section 4). Until then this file read a post's
+// fields straight from `entry.data`; when the colleague's video pages started to render
+// through it, Post.astro widened its prop to `Post | Video`, and the video schema had to grow
+// four post fields it never used, only to type-check. The frame takes plain props now - a
+// title, the dates, the terms, the text of the clock item, the share texts - and knows nothing
+// about collections: Post.astro maps a post onto them and VideoLayout.astro a video, and those
+// two are the only places that read a collection's `data`. The Base layout and the sidebar
+// moved in here from Post.astro on the same day, so that the video page gets them without a
+// copy.
+//
+// THE SIDEBAR - moved to src/components/TocSidebar.astro on 2026-09-22, together with the notes
+// that used to stand here, its style block and its script. This frame passes it the headings.
+import Base from "./Base.astro";
+// Added 2026-09-22 with the sidebar moving out of this file; see the note further down.
+import TocSidebar from "../components/TocSidebar.astro";
+// Added 2026-09-22 with the move to build-time math (astro.config.mjs): rehype-katex emits KaTeX
+// markup, which is unreadable without this stylesheet - it used to come from a CDN tag in
+// Head.astro. It is imported from the npm package rehype-katex installs, so the fonts are hashed
+// into _astro/ with the rest of the build and a formula no longer waits on jsdelivr.
+//
+// Imported here and not in Base.astro, which would have put it on all 107 pages: an article body is
+// the only place a formula can appear. The lists show summaries, and a summary is the Markdown
+// source truncated to plain text, so it never carries KaTeX markup. Astro bundles CSS per page, so
+// this keeps the stylesheet off every page that cannot use it.
+//
+// Corrected later on 2026-09-22: "the npm package rehype-katex installs" is no longer how this
+// path resolves. katex is a dependency of this project in its own right now, declared in
+// package.json, because relying on a transitive one means the import breaks the day rehype-katex
+// stops depending on katex or npm nests it instead of hoisting it - and it breaks as a build
+// failure on articles only. Nothing new was downloaded: it is the same 0.16.47 that was already in
+// the tree. The note in package.json says the same.
+import "katex/dist/katex.min.css";
+import ShareWidget from "../components/ShareWidget.astro";
+import TableOfContents from "../components/TableOfContents.astro";
+import PostNav from "../components/PostNav.astro";
+import Terms from "../components/Terms.astro";
+import { site } from "../config";
+// Changed 2026-10-12 with the two interface languages (src/i18n/lang.ts): ui (was t), through T.
+// import { t } from "../i18n/strings";
+import { ui } from "../i18n/strings";
+import type { Phrase, Words } from "../i18n/lang";
+import T from "../components/T.astro";
+import { formatDateTime, formatIsoDate } from "../lib/date";
+import type { NavLink } from "../lib/lists";
+import { encodeSlug, urlize } from "../lib/urlize";
+import type { MarkdownHeading } from "astro";
+
+interface Props {
+  /** The h1 and the page title. */
+  title: string;
+  /** The page's meta description. It is not a share text by itself; pass it in shareTexts. */
+  description: string;
+  date: Date;
+  /** Shown in the "last updated" line; the date itself when undefined. */
+  updated: Date | undefined;
+  categories: string[];
+  tags: string[];
+  /** The text of the clock item under the title: "3 min read" for a post, the duration for a video. The item is left out when undefined. */
+  // Changed 2026-10-12: Words - a post's reading time is interface text in both languages, a
+  // video's duration is content.
+  timeLabel: Words | undefined;
+  shareTitle: string;
+  /** Candidates for the Share button's text, in order; the first one with any text left after cleaning wins, else the site title. */
+  shareTexts: (string | undefined)[];
+  headings: MarkdownHeading[];
+  /** The previous and next links, built by the wrapper: postLink() or videoLink(). */
+  prev: NavLink | null;
+  next: NavLink | null;
+  /**
+   * The subject of the page is a video, which Open Graph types as `video.other` instead of
+   * `article`. Added 2026-09-22 and set by VideoLayout.astro; a post leaves it alone. It is a
+   * flag and not the entry, so this frame still knows nothing about collections.
+   */
+  isVideo?: boolean;
+}
+
+const {
+  title,
+  description,
+  date,
+  updated,
+  categories,
+  tags,
+  timeLabel,
+  shareTitle,
+  shareTexts,
+  headings,
+  prev,
+  next,
+  isVideo,
+} = Astro.props;
+
+const dateMachine = formatDateTime(date);
+const dateHuman = formatIsoDate(date);
+const updatedHuman = formatIsoDate(updated ?? date);
+// Added 2026-10-12: the "last updated" line in both languages, as one string per language - the
+// note above the line in the markup says why it has to be one text node.
+const updatedLine: Phrase = {
+  ru: `${ui.last_updated.ru} ${updatedHuman}`,
+  en: `${ui.last_updated.en} ${updatedHuman}`,
+};
+
+// Changed 2026-09-19, asked for by the owner: the Share button got an empty text for every
+// post without a description. The fallback chain used `??`, which only skips null and
+// undefined, and the collection schema defaults `description` to an empty string, so the chain
+// always stopped there and never reached `summary` or the site title. Now each candidate is
+// cleaned first and the first one with any text left wins; a description made only of spaces
+// or tags counts as empty as well. It was:
+//
+//   const shareText = (
+//     data.share_description ??
+//     data.description ??
+//     data.summary ??
+//     site.title
+//   )
+//     .replace(/<[^>]*>/g, "")
+//     .replace(/\s+/g, " ")
+//     .trim()
+//     .slice(0, 120);
+//
+// Since 2026-09-22 the candidates come in as the shareTexts prop: for a post
+// [share_description, description, summary], for a video [description].
+const cleanShareText = (text: string | undefined) =>
+  (text ?? "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+const shareText = (
+  shareTexts.map(cleanShareText).find(Boolean) ?? site.title
+).slice(0, 120);
+
+// Added 2026-09-22 with the head meta below: the same first non-empty candidate, but not cut to
+// 120 characters. That cut belongs to the share widget, whose links carry the text in a query
+// string; resolveDescription() in lib/seo.ts does its own truncation at 160, which is what the
+// meta description wants.
+const shareDescription = shareTexts.map(cleanShareText).find(Boolean);
+---
+
+{
+  /* Changed 2026-09-22. This call used to pass the title and the description and nothing else,
+  which quietly disabled every article-specific head tag on the site. Base.astro accepts
+  isArticle, publishDate, updatedDate, tags and params, builds a PageLike out of them and hands
+  it to SEO.astro - and SEO.astro decides og:type from `isPage`, emits article:published_time,
+  article:modified_time and one article:tag per tag, and prefers params.share_title and
+  params.share_description over the page's own. Nothing in src/ set any of those, so measured in
+  the built HTML: every post and every video carried og:type "website" and not one article:* tag,
+  while the share fields in the front matter reached the share widget and stopped there. The
+  machinery was written and never connected.
+
+  The values below are the ones this frame already holds, so its callers did not change:
+  Post.astro and VideoLayout.astro map an entry onto these props as before. `content` is the one
+  prop still not passed - the body is a slot here, so this file never sees the text; a post
+  without a description therefore falls back to the site title rather than to its opening
+  sentence, which is a separate question from this one. */
+}
+<Base
+  title={title}
+  description={description}
+  isArticle={true}
+  isVideo={isVideo}
+  publishDate={date}
+  updatedDate={updated}
+  tags={tags}
+  params={{ share_title: shareTitle, share_description: shareDescription }}
+>
+  {
+    /* Changed 2026-09-18: this wrapper is what the sidebar below is positioned against. It has
+  no box of its own, so the article renders exactly as it did without it. */
+  }
+  <div class="relative">
+    <article
+      class="mx-auto max-w-4xl overflow-hidden rounded-lg bg-white shadow-md"
+    >
+      <header class="relative border-b border-gray-100">
+        <div class="article-inner py-8">
+          {
+            categories.length > 0 && (
+              <div class="mb-3 flex">
+                {/* Changed 2026-09-19 evening: the href got its trailing slash. Hugo prints
+            /categories/blog (string concatenation), and ARTICLE-PAGE-FIX.md removed the slash
+            for parity; but Astro's dev and preview servers answer the slash-less address with
+            404, which the owner reported. See CardList.astro and REVIEW-FIXES.md, section 5. */}
+                <a
+                  href={`/categories/${encodeSlug(urlize(categories[0]))}/`}
+                  class="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-600 transition-colors hover:bg-blue-100"
+                >
+                  {categories[0]}
+                </a>
+              </div>
+            )
+          }
+
+          <h1
+            class="relative mb-4 text-3xl font-bold text-gray-900 sm:text-4xl"
+          >
+            {title}
+          </h1>
+
+          <div
+            class="relative flex flex-wrap items-center gap-4 text-sm text-gray-500"
+          >
+            <time datetime={dateMachine} class="flex items-center">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="mr-1.5 h-4 w-4 text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                ></path>
+              </svg>
+              {dateHuman}
+            </time>
+
+            {
+              /* The clock item: the reading time of a post, the duration of a video, from the
+              timeLabel prop since 2026-09-22; it was `{readingMinutes} {t.reading_time}` here. */
+            }
+            {
+              timeLabel && (
+                <span class="flex items-center">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="mr-1.5 h-4 w-4 text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  {/* Changed 2026-10-12: through T (timeLabel is Words now). */}
+                  <T s={timeLabel} />
+                </span>
+              )
+            }
+
+            <span
+              id="busuanzi_container_page_pv"
+              class="inline-flex items-center whitespace-nowrap"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="mr-1.5 inline-block h-4 w-4 flex-shrink-0 text-gray-400"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                ></path>
+              </svg>
+              <span class="whitespace-nowrap">
+                {/* Changed 2026-10-12: both languages (was t.page_views). */}
+                <T s={ui.page_views} />
+                {
+                  /* Changed 2026-10-11 (the owner saw "Page Views18"): the line break between the label and this span
+                  is not kept as a space by the compiler, so the gap is a margin, which cannot be lost. */
+                }
+                <span id="busuanzi_value_page_pv" class="ml-1"></span>
+              </span>
+            </span>
+
+            <ShareWidget
+              url={new URL(Astro.url.pathname, Astro.site).toString()}
+              title={shareTitle}
+              text={shareText}
+            />
+          </div>
+        </div>
+      </header>
+
+      {
+        /* Added 2026-09-22: a block between the header and the table of contents for what a
+        page shows before its text - the player of a video page (VideoLayout.astro). Rendered
+        only when the caller fills the slot, so a post page has no empty box here. */
+      }
+      {
+        Astro.slots.has("media") && (
+          <div class="article-inner pt-7">
+            <slot name="media" />
+          </div>
+        )
+      }
+
+      {
+        /* Changed 2026-09-16: the "does this post have headings" check moved here from inside
+      TableOfContents.astro. Prettier parses the markup of an Astro expression as JSX, where Alpine's
+      @click attribute is a syntax error, so with the whole component wrapped in an expression
+      prettier --check failed on that file. Hugo makes the same check, in single.html. */
+      }
+      {headings.length > 0 && <TableOfContents headings={headings} />}
+
+      <div
+        class="article-inner article-prose prose prose-sm sm:prose lg:prose-lg max-w-none py-7"
+      >
+        <slot />
+      </div>
+
+      <div class="article-inner flex items-center pb-2 text-sm text-gray-500">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="mr-1.5 h-4 w-4 text-gray-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+          ></path>
+        </svg>
+        {
+          /* Changed 2026-09-28 at the owner's request: the line read "Last updated on2026-09-28".
+          The div is a flex container, so the label and the date, written as two expressions,
+          became two anonymous flex items and the whitespace between them was dropped. One
+          expression is one text node, with the space inside it. */
+        }
+        {
+          /* Changed 2026-10-12: both languages, still one text node per language (updatedLine). It was
+        the template literal of t.last_updated and updatedHuman. */
+        }
+        <T s={updatedLine} />
+      </div>
+
+      <footer class="border-t border-gray-100 bg-gray-50 py-6">
+        <div class="article-inner">
+          <Terms tags={tags} />
+
+          <PostNav prev={prev} next={next} />
+
+          <div class="mt-6 flex justify-center">
+            <a
+              href="/"
+              class="inline-flex items-center text-gray-600 transition-colors hover:text-blue-600"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="mr-2 h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+              </svg>
+              {/* Changed 2026-10-12: both languages (was t.back_to_home). */}
+              <T s={ui.back_to_home} />
+            </a>
+          </div>
+        </div>
+      </footer>
+    </article>
+
+    <div
+      class="theme-card mx-auto mt-8 max-w-4xl overflow-hidden rounded-lg bg-white shadow-md"
+      style="--tw-prose-body: #374151; --tw-prose-headings: #111827; --tw-prose-links: #2563eb; --tw-prose-links-hover: #1d4ed8; --tw-prose-code-bg: #f3f4f6; color: #374151;"
+    >
+    </div>
+
+    {
+      /* (English, added 2026-09-22 next to the original heading: the dynamic table of contents,
+      the sidebar.)
+      Динамическое оглавление (Sidebar)
+
+    Changed 2026-09-18: the note above was an HTML comment, which is sent to every visitor with
+    the page. It is an Astro comment now, so it stays in the source and out of the output.
+
+    Changed 2026-09-22: the sidebar - its markup, its styles and its script - is
+    src/components/TocSidebar.astro. It built its own entries from the same headings this frame
+    already has, and nothing else in here read them, so the whole of it moved out and this file
+    lost close to half its length. It still renders inside the relative wrapper above, which is
+    what its absolute positioning is measured against. */
+    }
+    <TocSidebar headings={headings} />
+  </div>
+</Base>

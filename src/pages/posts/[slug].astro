@@ -1,0 +1,67 @@
+---
+// One post, /posts/<slug>/.
+//
+// Changed 2026-10-10 (T034 of specs/001-self-hosted-club-site): rendered on demand from the backend through
+// src/lib/api-client.ts, one call, and no longer built from the content collection. The backend sends the post
+// already rendered (its HTML, its headings, its reading time), so the page renders no Markdown. A post the viewer may
+// not see is the same answer as a missing one: the 404 page. getStaticPaths() and the `prerender` line of T032 are
+// gone. The address /posts/<year>/, which this route would also receive, is passed on to the list route by
+// src/middleware.ts before it gets here.
+import Post from "../../layouts/Post.astro";
+// Added 2026-10-12 (T090): the page of a post the viewer sees only as a card.
+import LockedEntry from "../../layouts/LockedEntry.astro";
+// Changed 2026-10-13 (T106): the site's own comments replace the previous service's component.
+import Comments from "../../components/Comments.astro";
+import { getPost } from "../../lib/api-client";
+import { apiPostLink, postPageData } from "../../lib/posts";
+
+const context = { cookie: Astro.request.headers.get("cookie") ?? undefined };
+const answer = await getPost(Astro.params.slug ?? "", context);
+// Changed 2026-10-12 (T090): an entry the viewer sees as a card (`view` "teaser", `content` null) is the locked page,
+// not a 404; one the viewer may not see at all is still the 404 page, the same answer as a missing one.
+if (answer === null) return Astro.rewrite("/404");
+const { entry, prev, next } = answer;
+const content = entry.content;
+const post = content?.kind === "post" ? postPageData(entry, content) : null;
+if (post === null && entry.view !== "teaser") return Astro.rewrite("/404");
+
+// Changed 2026-09-22: the address is built from postUrl() in lib/posts.ts instead of being
+// assembled here out of the slug. lib/posts.ts is where a post's address is decided - the list
+// cards and the previous/next links already go through it - and a second copy of the pattern in
+// this file would have to be found and changed by hand if /posts/ ever moves. A Disqus thread is
+// keyed by this URL, so the two drifting apart would orphan every comment on the site. The local
+// name is commentsUrl because postUrl is now the imported function.
+// Removed 2026-10-13 (T106): `commentsUrl` and the postUrl import: the thread is keyed by kind and slug now, which
+// the component builds the backend's route from, so no address is assembled in this file.
+---
+
+{
+  post === null || content?.kind !== "post" ? (
+    <LockedEntry
+      kind="post"
+      slug={entry.slug}
+      title={entry.title}
+      date={new Date(entry.date)}
+      summary={entry.summary}
+      tags={entry.tags}
+    />
+  ) : (
+    <Post
+      post={post}
+      headings={content.headings}
+      prev={prev && apiPostLink(prev)}
+      next={next && apiPostLink(next)}
+    >
+      <Fragment set:html={content.html} />
+      <hr class="my-8 border-gray-200" />
+
+      {/* Changed 2026-09-22: the reveal button that stood here is inside Disqus.astro now, together
+    with the script that binds to it - it was a copy of the block in video/[slug].astro, and this
+    file had no reason to know the widget's ids or its label. The rendered markup is unchanged.
+    The identifier is passed as post.slug directly: the local postIdentifier alias only restated
+    the prop's name, which Disqus.astro now documents on the prop itself. */}
+      {/* Changed 2026-10-13 (T106): the club's own comments, always shown (T151); no reveal button. */}
+      <Comments kind="post" slug={post.slug} />
+    </Post>
+  )
+}

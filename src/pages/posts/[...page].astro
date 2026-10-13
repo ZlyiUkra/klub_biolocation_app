@@ -1,0 +1,68 @@
+---
+// The Posts menu item. Hugo renders /posts/ from
+// ../klub_biolocation/themes/void/layouts/_default/list.html; the markup lives in
+// CardList.astro because /categories/<slug>/ uses the same template. MIGRATION-PLAN.md §4.1.
+//
+// The title comes from ../klub_biolocation/content/posts/_index.md, whose front matter sets
+// `title = 'Posts'`. There is no Astro equivalent of a section index page here, so it is a
+// literal - change it in both places if the section is ever renamed.
+//
+// Changed 2026-09-19, asked for by the owner: the list is paginated by year. This file was
+// src/pages/posts/index.astro and rendered every post on one page. The owner's rule: choosing
+// a year shows only that year's posts, five to a page, and Previous and Next move only
+// within that year. As a rest-parameter route this file renders:
+//
+//   /posts/2025/          the first page of 2025 (the parameter is "2025");
+//   /posts/2025/page/2/   its second page ("2025/page/2"), Hugo's shape for a further page;
+//   /posts/               the newest year's first page (the parameter is undefined). The Posts
+//                         menu item points here, so it has to show something; it shows the same
+//                         page as /posts/<newest year>/, with the same Previous and Next links,
+//                         and the year switcher marks that year as the current one.
+//
+// Every year keeps its own addresses, so they do not change when a new year begins.
+//
+// The single posts are in ./[slug].astro, which also matches one segment after /posts/. The
+// two routes never produce the same address as long as no post's file name is a year, like
+// 2025.md; the templates and CONTENT.md say so.
+//
+// Changed later on 2026-09-19: the splitting by year moved from this file into
+// paginateByYear() in lib/posts.ts, because the owner asked for the tag and category lists to
+// work the same way; the three routes now share it, and CardList.astro renders every page
+// through ListByYear.astro. Until then the year switcher was on this route only. See
+// PAGINATION.md.
+import Base from "../../layouts/Base.astro";
+// Changed 2026-09-22 (VIDEO-PAGE.md, section 4): the list component is CardList.astro (it was
+// PostList.astro) and renders Cards, plain data this route builds with postCard(); the split by
+// year comes from lib/lists.ts, shared with the Video list.
+import CardList from "../../components/CardList.astro";
+// Changed 2026-10-10 (T034 of specs/001-self-hosted-club-site): the cards come from the backend through
+// api-client.ts and apiPostCard(); the route is rendered on demand and picks its page out of the same
+// paginateByYear() result the build used to turn into files.
+// Changed 2026-10-10 (T162): the backend cuts the list by year and by page; this route asks for the one page its
+// address names (getListRoute() in lib/terms.ts) and no longer receives every card to cut itself.
+import { getListRoute } from "../../lib/terms";
+
+// Changed 2026-10-12 with the two interface languages: the section's name in both, from
+// site.sections in src/config.ts (it was the literal "Posts").
+import { site } from "../../config";
+const title = site.sections.posts;
+
+const context = { cookie: Astro.request.headers.get("cookie") ?? undefined };
+// `Astro.params.page` is undefined for /posts/, "2025" for /posts/2025/ and "2025/page/2" beyond: the same strings the
+// build produced as `param`, so the same find answers.
+// `Astro.locals.yearList` is set by src/middleware.ts when /<section>/<year>/ was passed here under the alias of its
+// first page (see there); then "2025/page/1" is the first page of 2025, whose param is "2025".
+const param = Astro.locals.yearList
+  ? Astro.params.page?.replace(new RegExp("/page/1$"), "")
+  : Astro.params.page;
+const entry = await getListRoute({ kind: "post" }, "/posts/", param, context);
+if (entry === undefined) return Astro.rewrite("/404");
+const { page, years, year } = entry;
+
+// Changed 2026-10-10 (T034 of specs/001-self-hosted-club-site): the `prerender = true` line that T032 put here is gone.
+// Rendered on demand from the backend, one request each.
+---
+
+<Base title={title}>
+  <CardList title={title} page={page} years={years} currentYear={year} />
+</Base>

@@ -1,0 +1,48 @@
+---
+// One level of the table of contents, and every level below it. Added 2026-09-22, replacing the
+// string concatenation that used to live in src/lib/toc.ts and reach the page through set:html.
+//
+// The recursion is Astro.self (Astro 4, API Reference, "Astro.self"), which lets a component
+// render itself. The gain over the string version is not the shape of the code: it is that the
+// template escapes the heading text and the href, so the hand-written escapeHtml() the old
+// renderList() depended on is gone, and a future edit cannot forget to call it.
+//
+// The markup is what Hugo's .TableOfContents emits and what the previous version built: nested
+// <ul>/<li>, an <a> per heading, and a bare <li> wrapping the next level where a level has no
+// heading of its own (a post whose headings start at h2). The id TableOfContents is on the <nav>
+// in TableOfContents.astro, not here, because this component renders one list at any depth.
+//
+// The anchor is written as the raw slug, not percent-encoded, which is what the string version
+// produced and what the browser resolves against the heading's id. encodeSlug() from lib/urlize.ts
+// is for a path segment in a link to another page; an in-page fragment is not that.
+//
+// Two differences in the emitted HTML, both checked and both invisible. First, a template keeps
+// the whitespace around its expressions, so the built markup reads `<ul> <li> <a ...>` where the
+// concatenated string had `<ul><li><a ...>`. Nothing shows it: main.css gives #TableOfContents a
+// `display: block` and the lists `list-style: none` with no flex anywhere, so a space between two
+// block boxes renders as nothing, and `#TableOfContents > ul > li + li` matches on elements, which
+// text nodes do not affect. Second, the <nav> carries a data-astro-cid attribute now, because it
+// sits in TableOfContents.astro, which has a scoped style block; the list below does not, since
+// this component has no styles of its own. Every rule that targets the table of contents is a
+// global id or element selector in main.css, so neither difference reaches the page.
+import type { TocNode } from "../lib/toc";
+
+interface Props {
+  nodes: TocNode[];
+}
+
+const { nodes } = Astro.props;
+---
+
+<ul>
+  {
+    nodes.map((node) => (
+      <li>
+        {node.heading && (
+          <a href={`#${node.heading.slug}`}>{node.heading.text}</a>
+        )}
+        {node.children.length > 0 && <Astro.self nodes={node.children} />}
+      </li>
+    ))
+  }
+</ul>

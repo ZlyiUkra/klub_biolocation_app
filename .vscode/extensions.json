@@ -1,0 +1,21 @@
+{
+  // Added 2026-09-18, so that everyone working on this repository gets the same editor behaviour.
+  //
+  // recommendations: what the project is developed with. Astro provides language support for .astro
+  // files, Prettier is the formatter the repository is configured for (see prettier.config.mjs and
+  // the per-language defaults in settings.json).
+  "recommendations": ["astro-build.astro-vscode", "esbenp.prettier-vscode"],
+
+  // unwantedRecommendations: both of these replace the TypeScript that VS Code hands to the Astro
+  // extension - "TypeScript 7" with the native preview, the nightly one with a typescript@next build.
+  // The project runs TypeScript 5.9.3 from node_modules and @astrojs/check declares support for 5 and
+  // 6 only, so with either of them active the editor stops agreeing with "npm run check" and with the
+  // other machines on the team.
+  //
+  // VS Code only stops recommending them here. Turning them off for this workspace is a manual step:
+  // Extensions panel, find the extension, Disable (Workspace), then Developer: Reload Window.
+  "unwantedRecommendations": [
+    "typescriptteam.native-preview",
+    "ms-vscode.vscode-typescript-next"
+  ]
+}

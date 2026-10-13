@@ -1,0 +1,79 @@
+---
+/* кнопка Наверх/Back to Top */
+
+// Noted 2026-09-30, from a Tailwind 3.4 audit the owner ordered: bg-[#11213b] is the dark theme's
+// --panel-bg from src/styles/custom.css written out by hand, and hover:bg-[#233358] a lighter step
+// of it. Left as literals on purpose: the button is dark in both themes, while var(--panel-bg) is
+// light in the light theme, so the variable cannot stand in for it. Change these two together
+// with that variable if the dark palette moves.
+//
+// Changed 2026-09-30, at the owner's request: the button starts out pointer-events-none and
+// invisible. It was transparent and pushed down but still there, so until the page had been
+// scrolled down and back (the script added pointer-events-none only then) a tap at the bottom
+// right hit an invisible button, and Tab could land on it too. invisible is visibility: hidden,
+// which takes it out of both; transition-all keeps it visible for the whole fade-out, so the
+// animation looks as before. The script below toggles it with the other classes.
+//
+// Changed 2026-10-12 with the two interface languages (src/i18n/lang.ts): the label is the theme's
+// back_to_top string in both languages (it read "Наверх").
+import { ui } from "../i18n/strings";
+import { langAttrs } from "../i18n/lang";
+---
+
+<button
+  id="scroll-to-top"
+  class="pointer-events-none invisible fixed bottom-6 right-6 z-50 flex h-12 w-12 translate-y-12 items-center justify-center rounded-full bg-[#11213b] text-white opacity-0 shadow-lg transition-all duration-300 hover:bg-[#233358] active:scale-95"
+  {...langAttrs({ "aria-label": ui.back_to_top })}
+>
+  <svg
+    xmlns="http://w3.org"
+    fill="none"
+    viewBox="0 0 24 24"
+    stroke-width="2.5"
+    stroke="currentColor"
+    class="h-6 w-6"
+  >
+    <path
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      d="M4.5 10.5 12 3m0 0 7.5 7.5M12 3v18"></path>
+  </svg>
+</button>
+
+<script>
+  const setupScrollToTop = () => {
+    const button = document.getElementById("scroll-to-top");
+    if (!button) return;
+
+    window.addEventListener("scroll", () => {
+      // Changed 2026-09-30: "invisible" joins the toggled classes; see the note at the top.
+      if (window.scrollY > 300) {
+        button.classList.remove(
+          "opacity-0",
+          "translate-y-12",
+          "pointer-events-none",
+          "invisible",
+        );
+        button.classList.add("opacity-100", "translate-y-0");
+      } else {
+        button.classList.remove("opacity-100", "translate-y-0");
+        button.classList.add(
+          "opacity-0",
+          "translate-y-12",
+          "pointer-events-none",
+          "invisible",
+        );
+      }
+    });
+
+    button.addEventListener("click", () => {
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    });
+  };
+
+  setupScrollToTop();
+  document.addEventListener("astro:after-swap", setupScrollToTop);
+</script>
