@@ -1889,6 +1889,10 @@ request; the source is `klub_biolocation_astro`, branch `refactor-app`, from `2b
       history); the new repository, the push and the removal of the old one are his own actions, and both points close
       when they are done. The rule against the footer is repeated in both `CLAUDE.md` files. (c) and (d) wait for his
       answer. (e): the 20 files stay unformatted for now, at his word.
+      Closed the same evening: (a) and (b) by the replacement. The new repository holds the export and one commit on
+      top of it, the history of the working folder was restarted from them (the old one is a private backup outside the
+      repository), no commit names the assistant, and `npm run check:secrets` passes with no exemption flag. (c) and
+      (d) are left for later, at his word.
 - [x] T129 Run `npm run fix`, `npm run check`, `npm run build`, start `npm run dev` once, and the route-parity and
       pagination checks; report results plainly.
       Done 2026-10-13, results as they were. `npm run fix` was not run: it is `prettier --write .` and rewrites files of
@@ -2018,6 +2022,12 @@ request; the source is `klub_biolocation_astro`, branch `refactor-app`, from `2b
       `--accept-history-authors`. The scratch folder with the two earlier copies, which kept the name, is deleted.
       Amended 2026-10-13, the owner's word: no absolute path of his machine stays in any tracked file, so the paths
       above were taken out (CLAUDE.md, "Markdown and prose conventions").
+      Carried out 2026-10-13, evening, by the owner's hands: the export was pushed to a new empty repository (the
+      earlier one, which had received the private history, was deleted), and this folder's history was restarted from
+      the pushed commit, so the working folder is the published repository and no export folder is needed any more. The
+      old history is one private backup file outside the repository. In this folder the release check
+      `npm run check:secrets` is clean with no `--accept-history-authors`; the note above that it fails on the
+      commits' address no longer applies.
 - [x] T132 Record the deferred plan phase 9 items (address confirmation and reset by mail, full-text search, argon2)
       as a list in `MIGRATION-PLAN.md`, with the condition under which each starts.
       Done 2026-10-13. `MIGRATION-PLAN.md` section 11 lists the three items, each with what stands today and the

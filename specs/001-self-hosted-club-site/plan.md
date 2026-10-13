@@ -101,6 +101,11 @@ Re-checked 2026-10-13 on the finished system (T128): gates 1 to 7 hold with the 
 ("Constitution Check on the finished system (T128)"); gate 8 does not hold as written there: the repository has a
 remote that was pushed to, and 21 commits carry an attribution line. The owner decides what follows.
 
+Closed the same evening (T128): the owner replaced the public repository with the neutral one-commit export and the
+history of the working folder was restarted from it, so no commit names the assistant and `npm run check:secrets`
+passes with no exemption flag. The "no remote exists" of gate 8 above is no longer true: `origin` is the owner's own
+repository, pushed by his hand. Details in `REWRITE.md`.
+
 ## Project Structure
 
 ### Documentation (this feature)

@@ -1122,6 +1122,20 @@ is a point only the owner can close; nothing below was changed to make a gate pa
   and the removal (or hiding) of the old one are the owner's own actions; a Claude session does not push, on request
   either. Until they are done the statements "no remote" in `CLAUDE.md`, constitution VIII and `plan.md` stay as they
   are, and open points (a) and (b) stay open.
+  Closed the same evening, by the owner's hands: he deleted the public repository, created a new empty one at the same
+  address and pushed the export (one commit, `51fc456`). The history of the working folder was then restarted from that
+  commit: the old history was saved as one file outside the repository (it holds the commits' name and address and the
+  21 footers), the old git data was moved out of the folder, new git data was started from the pushed commit with the
+  neutral identity in this repository's own configuration, and one commit with the guide of that evening was pushed on
+  top (`583fee9`). `npm run check:secrets` now passes with no `--accept-history-authors` and no accepted entry,
+  `git log` shows two commits, both by `Klub Biolocation`, and no message carries a `Co-Authored-By` line. Points
+  (a) and (b) are closed. Two hooks in `.git/hooks` (`commit-msg`, `pre-push`) refuse a commit or a push that names
+  the assistant; they are untracked.
+- Left over from it: the sentence of constitution VIII that the repository has no remote until the owner publishes it
+  is wording the owner amends (`/speckit-constitution`, a PATCH); the hashes quoted in documents written before today
+  (for example `c615678` in T189) name commits of the old history, which only the private backup holds; and T127
+  amended left the history out of the scan for paths of the machine because it was private, which it no longer is:
+  switching that scan on is a change of `scripts/check-secrets.mjs` and waits for the owner's word.
 - Open (b), the footers: 21 commits, from 2026-10-11 22:27 to 2026-10-12 00:32 (the first is `b77b71e`, the last
   `0716446`), end with a `Co-Authored-By` line naming the assistant. The rule (CLAUDE.md, "Git"; constitution VIII)
   says no mention of the assistant in a commit and no such footer, and it overrides the harness's default text. All 21
