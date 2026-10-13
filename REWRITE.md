@@ -1134,3 +1134,14 @@ is a point only the owner can close; nothing below was changed to make a gate pa
   and readers reaching the site without a VPN. The outside-services sentence of "Stack and Architecture Constraints"
   names YouTube embeds only, while the config lists the embed hosts of VK, Rutube, Vimeo and Odnoklassniki (the
   providers of migrations 010 and 011, T175); amending that sentence is the owner's, through `/speckit-constitution`.
+
+### 2026-10-13: the guide for a colleague who clones the repository
+
+- `GETTING-STARTED.md` (the owner's request, after T128): what to install, the clone, `npm ci`, the four lines of
+  `.env`, the database container, `db:migrate`, `import:content`, `dev:site`, the first administrator (by the
+  command or by the setup page), and a list of failures with their cures. It was run from a fresh copy of the committed
+  files on spare ports (database 5440, site 3100) so as not to touch the owner's container or server: `npm ci`
+  passed, the container became healthy, 23 migrations were applied, 24 posts and 22 videos were imported, and `/`,
+  `/posts/`, `/video/`, `/about/`, `/tags/`, `/search/`, `/auth/signin/` and `/auth/signup/` answered 200
+  (`/admin/posts/` answers 404 to a visitor, as designed). Not run: `npm run superuser` (it needs a terminal to type
+  the password) and the test suite on the fresh copy. The test copy, its container and its volume were removed.

@@ -6,6 +6,8 @@ Astro 4 + Tailwind 3 rewrite of the Hugo site in `../klub_biolocation`. The Hugo
 
 ## Requirements
 
+A first run from a fresh clone, step by step (Node 20, Docker Desktop, the database container, the commands in order, and what to do when a step fails): [GETTING-STARTED.md](GETTING-STARTED.md). It was walked through on a fresh copy of the committed files on 2026-10-13.
+
 | Tool    | Version | Notes                                                |
 | ------- | ------- | ---------------------------------------------------- |
 | Node.js | 20.x    | Enforced by `engines` in `package.json` and `.npmrc` |
