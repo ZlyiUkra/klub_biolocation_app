@@ -1159,3 +1159,17 @@ is a point only the owner can close; nothing below was changed to make a gate pa
   `/posts/`, `/video/`, `/about/`, `/tags/`, `/search/`, `/auth/signin/` and `/auth/signup/` answered 200
   (`/admin/posts/` answers 404 to a visitor, as designed). Not run: `npm run superuser` (it needs a terminal to type
   the password) and the test suite on the fresh copy. The test copy, its container and its volume were removed.
+
+### 2026-10-30: GETTING-STARTED.md without Docker
+
+- A colleague's computer cannot run Docker Desktop, so PostgreSQL was installed on the machine itself, and the site
+  answered 500 for `/api/terms`. Two causes were read from the log and the `.env`: the role `klub` did not exist on
+  that server (the container's image creates it, a plain installation does not), and `DATABASE_URL` carried the
+  password in double quotes, which Node's `--env-file` keeps inside a value that does not start with one.
+- The guide gained the section "Without Docker: PostgreSQL on the machine itself" (the installation,
+  `CREATE ROLE klub LOGIN CREATEDB`, `CREATE DATABASE klub OWNER klub`, a sign-in check, the differences from the
+  container and four failures with their cures), pointers to it from steps 1 and 5, and a line in README.md.
+- Checked by reading, not run: the migrations and the server use no extension and no statement reserved to a
+  superuser, the server reads `DATABASE_URL` alone (`server/src/config.ts`), and the tests need `CREATEDB`
+  (`server/test/helpers/db.ts`). The steps themselves were not run: this machine has no PostgreSQL outside the
+  container, and Docker was not running.

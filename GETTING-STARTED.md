@@ -13,7 +13,8 @@ videos of the repository loaded into it. Plan for about 20 minutes, most of it d
   purpose: `package.json` and `.npmrc` pin Node 20 (`engine-strict`), and `npm ci` stops with an "Unsupported engine"
   message on Node 18 or 22. A version manager helps: `nvm` (macOS, Linux), `nvm-windows` (Windows).
 - **Docker** with Compose v2: **Docker Desktop** on Windows and macOS, Docker Engine with the Compose plugin on Linux.
-  The database runs in one container; nothing else needs Docker.
+  The database runs in one container; nothing else needs Docker. On a computer that cannot run Docker, install
+  PostgreSQL 16 instead and follow [Without Docker](#without-docker-postgresql-on-the-machine-itself).
 - A browser.
 
 Check that all of it is in place; each command must print a version and not an error:
@@ -72,6 +73,9 @@ SITE_ORIGIN=http://localhost:3000,http://127.0.0.1:3000
 - If port 3000 is busy on your machine, use another number in `PORT` and in both origins of `SITE_ORIGIN`.
 
 ## 5. Start the database container
+
+Without Docker, skip this step: do [Without Docker](#without-docker-postgresql-on-the-machine-itself) instead, then
+continue with step 6.
 
 ```sh
 docker compose -f compose.dev.yml up -d db
@@ -182,6 +186,70 @@ Do not run `npm run fix`: it reformats the whole repository.
 - **A form answers "forbidden" or a sign-in does not stick**: the address in the browser is not one of the origins in
   `SITE_ORIGIN`. Open the site at the address listed there.
 - **The site shows no posts**: `npm run import:content` has not been run against this database (step 6).
+
+## Without Docker: PostgreSQL on the machine itself
+
+For a computer that cannot run Docker Desktop, an older one for example. Docker is used here only for the development
+database, so a PostgreSQL 16 server installed on the machine does the same job. This replaces step 5 and the two
+`docker` lines of step 1; every other step stays as it is.
+
+1. Install PostgreSQL 16, the version of the container and of production: on Windows with the installer linked from
+   <https://www.postgresql.org/download/windows/>, on Linux from the PostgreSQL packages for the distribution
+   (<https://www.postgresql.org/download/linux/>), on macOS with the installer or Postgres.app. During the installation:
+   - choose the port 5433, or keep 5432 and write that number in `DATABASE_URL` (step 4) and in the commands below;
+   - note the password asked for the `postgres` superuser. It belongs to the installation; it is not the one in
+     `.env`.
+2. Open `psql` as that superuser. On Windows `psql` is in the `bin` folder of the installation, and the installer adds
+   "SQL Shell (psql)" to the Start menu.
+
+   ```sh
+   psql -h 127.0.0.1 -p 5433 -U postgres
+   ```
+
+3. Create the role and the database the site uses. The password is the one in `DATABASE_URL` of your `.env`; in SQL it
+   goes in single quotes, in `.env` it has no quotes at all.
+
+   ```sql
+   CREATE ROLE klub LOGIN CREATEDB PASSWORD '<the password from .env>';
+   CREATE DATABASE klub OWNER klub;
+   ```
+
+   - `CREATEDB` is for `npm run test:server`: each test makes and drops a database of its own.
+   - `OWNER klub` matters: since PostgreSQL 15 only the owner of a database may create tables in its `public` schema,
+     which is where `db:migrate` creates them.
+   - The role needs nothing more. The migrations use no extension and no statement reserved to a superuser; in the
+     container the role is a superuser only because the image makes it one.
+
+4. Check that the role can sign in; this prints `1`:
+
+   ```sh
+   psql -h 127.0.0.1 -p 5433 -U klub -d klub -c "select 1"
+   ```
+
+5. Continue with step 6.
+
+Differences from the container:
+
+- The server reads `DATABASE_URL` only. `POSTGRES_PASSWORD` is read by the compose file alone; keep the line with the
+  same password or leave it empty.
+- PostgreSQL runs as a service of the system and normally starts with the computer, so the `docker compose` commands
+  of steps 10 and 11 are not needed.
+- To start from an empty database (the `down -v` of step 10), run as `postgres` `DROP DATABASE klub WITH (FORCE);` and
+  `CREATE DATABASE klub OWNER klub;`, then step 6 again.
+
+When it fails:
+
+- **`role "klub" does not exist`**: step 3 was not done on the server that `DATABASE_URL` points at (check the port).
+  A PostgreSQL installed in another language writes this message in that language, and the terminal may show it as
+  unreadable characters; the error is then recognised by `routine: 'InitializeSessionUserId'` printed with it. The
+  same routine reports a role created without `LOGIN`.
+- **`password authentication failed for user "klub"`**: the password in `DATABASE_URL` is not the one given in step
+  3, or it is written in quotes. Node keeps quotes that stand inside a value (this one starts with `postgres://`), so
+  they become part of the password. Write it bare, or set the role's password again as `postgres`:
+  `ALTER ROLE klub PASSWORD '<the password from .env>';`.
+- **`database "klub" does not exist`**: the second line of step 3 is missing.
+- **`permission denied for schema public`** during `db:migrate`: the database was created without `OWNER klub`. Drop it
+  and create it again as in step 3.
 
 ## What this repository does not hold
 
