@@ -253,6 +253,11 @@ Differences from the container:
   of steps 10 and 11 are not needed.
 - To start from an empty database (the `down -v` of step 10), run as `postgres` `DROP DATABASE klub WITH (FORCE);` and
   `CREATE DATABASE klub OWNER klub;`, then step 6 again.
+- `npm run test:server` can report two failures here that say nothing about the site. A server installed in another
+  language fails the test "a session keeps a 32-byte hash", because that test expects an English error message. And
+  on rare occasions a test ends with `permission denied to terminate process`. In that case the test was removing its
+  database while a background process of PostgreSQL worked in it, and `klub` is not allowed to stop that process. Run
+  the suite again.
 
 When it fails:
 
@@ -260,13 +265,18 @@ When it fails:
   end, `psql` joined it to the next line and sent both as one statement, so `CREATE ROLE` did not run. `CREATE DATABASE`
   then fails with `role "klub" does not exist`, and nothing has been created. Type the two statements of step 3 alone.
 - **`role "klub" does not exist`**: step 3 was not done on the server that `DATABASE_URL` points at (check the port).
-  A PostgreSQL installed in another language writes this message in that language, and the terminal may show it as
-  unreadable characters; the error is then recognised by `routine: 'InitializeSessionUserId'` printed with it. The
-  same routine reports a role created without `LOGIN`.
-- **`password authentication failed for user "klub"`**: the password in `DATABASE_URL` is not the one given in step
-  3, or it is written in quotes. Node keeps quotes that stand inside a value (this one starts with `postgres://`), so
-  they become part of the password. Write it bare, or set the role's password again as `postgres`:
-  `ALTER ROLE klub PASSWORD '<the password from .env>';`.
+  A server answers this way when it is set up to let local connections in without a password. A PostgreSQL installed in
+  another language writes this message in that language, and the terminal may show it as unreadable characters; the
+  error is then recognised by `routine: 'InitializeSessionUserId'` printed with it. The same routine reports a role
+  created without `LOGIN`.
+- **`password authentication failed for user "klub"`**: this message has three possible causes.
+  - The role does not exist yet. A server that checks passwords gives this same message for a missing role, so that a
+    stranger cannot learn which roles exist. Type `\du` as `postgres` to see the roles, and do step 3 if `klub` is not
+    in the list.
+  - The password in `DATABASE_URL` is not the one given in step 3. Change it in `.env`, or set the role's password
+    again as `postgres`: `ALTER ROLE klub PASSWORD '<the password from .env>';`.
+  - The password is written in quotes inside `DATABASE_URL`. Node keeps quotes that stand inside a value (this value
+    starts with `postgres://`), so the quotes become part of the password. Write the password without quotes.
 - **`database "klub" does not exist`**: the second line of step 3 is missing.
 - **`permission denied for schema public`** during `db:migrate`: the database was created without `OWNER klub`. Drop it
   and create it again as in step 3.

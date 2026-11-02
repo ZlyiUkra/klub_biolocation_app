@@ -1187,3 +1187,30 @@ is a point only the owner can close; nothing below was changed to make a gate pa
   quotes), and without quotes it sees `abc123`. A value that starts with a quote, such as `POSTGRES_PASSWORD="abc123"`,
   loses the quotes. The server does not read `POSTGRES_PASSWORD`, so changing it could not change this error.
 - Still not run from start to end on a server outside the container: this machine has none, and Docker was not running.
+
+### 2026-11-02: the no-Docker section, run from start to end
+
+- The same day, at the owner's word, the section was run on a fresh copy of the committed files with `npm ci` and the
+  four lines of step 4, on two throwaway PostgreSQL 16.15 servers on free ports: a container whose only role was
+  `postgres`, and a native Windows server from a portable package, set up as the Windows installer sets one up on a
+  machine with a Russian locale (UTF8, `Russian_Russia.1251`, password checks on). The role was the one the guide
+  creates, not a superuser. Both gave the same result: 23 migrations applied, 24 posts and 22 videos imported, and
+  `/`, `/api/terms`, `/posts/`, `/video/`, `/tags/`, `/categories/`, `/about/`, `/search/`, `/auth/signin/` and
+  `/auth/setup/` answered 200 (`/admin/posts/` answers 404 to a visitor, as designed). The copy, the servers and their
+  data were removed.
+- In a real `psql` the colleague's two lines gave exactly the two errors of the report, with no role created, and `\r`
+  cleared an unfinished statement. Measured over TCP: a missing role gives `password authentication failed`, not
+  `role does not exist`, on a server that checks passwords, so the guide's failure list now says so. The report's
+  `role "klub" does not exist` from the application therefore means that the colleague's server lets local connections
+  in without a password. The other failures of the list gave the listed messages.
+- `npm run test:server` passed 637 of 639 on each server. Three different tests failed across the two runs, and none of
+  them concerns the site:
+  - "a limited account gets a limited session" (`server/test/session.test.ts`) fails on both servers and also as the
+    superuser. It creates a session dated 2026-10-11 and then resolves it with the real clock, so the session has
+    expired by now. It fails on every machine, with Docker too. Not fixed here; it is the owner's call.
+  - "a session keeps a 32-byte hash" failed on the Russian-language server only, because it expects an English message.
+    Not fixed here either.
+  - "renewal gives a new id" failed once in the container with `permission denied to terminate process`, raised by
+    `drop database ... with (force)` in `server/test/helpers/db.ts`. It passed in the four runs that followed, so it
+    is a race. The likely other party is an autovacuum worker, which a role that is not a superuser may not end; that
+    part was not measured.

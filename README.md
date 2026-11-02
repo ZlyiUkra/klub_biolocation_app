@@ -6,7 +6,7 @@ Astro 4 + Tailwind 3 rewrite of the Hugo site in `../klub_biolocation`. The Hugo
 
 ## Requirements
 
-A first run from a fresh clone, step by step (Node 20, Docker Desktop, the database container, the commands in order, and what to do when a step fails; since 2026-10-30 also the way without Docker, with PostgreSQL 16 installed on the computer itself): [GETTING-STARTED.md](GETTING-STARTED.md). It was walked through on a fresh copy of the committed files on 2026-10-13.
+A first run from a fresh clone, step by step (Node 20, Docker Desktop, the database container, the commands in order, and what to do when a step fails; since 2026-10-30 also the way without Docker, with PostgreSQL 16 installed on the computer itself, run from start to end on 2026-11-02): [GETTING-STARTED.md](GETTING-STARTED.md). It was walked through on a fresh copy of the committed files on 2026-10-13.
 
 | Tool    | Version | Notes                                                |
 | ------- | ------- | ---------------------------------------------------- |
