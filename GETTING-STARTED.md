@@ -198,7 +198,9 @@ database, so a PostgreSQL 16 server installed on the machine does the same job. 
    (<https://www.postgresql.org/download/linux/>), on macOS with the installer or Postgres.app. During the installation:
    - choose the port 5433, or keep 5432 and write that number in `DATABASE_URL` (step 4) and in the commands below;
    - note the password asked for the `postgres` superuser. It belongs to the installation; it is not the one in
-     `.env`.
+     `.env`;
+   - keep the locale the installer proposes. Under the locale `C`, PostgreSQL changes the case of Latin letters only, so
+     the search of the admin lists misses Cyrillic text written in another case.
 2. Open `psql` and sign in as that superuser. `psql` is the program that sends SQL commands to the server. There are
    two ways to open it. Use one of them, because the two ways differ.
    - **"SQL Shell (psql)" in the Start menu on Windows.** The window asks for the server, the database, the port, the
@@ -253,11 +255,9 @@ Differences from the container:
   of steps 10 and 11 are not needed.
 - To start from an empty database (the `down -v` of step 10), run as `postgres` `DROP DATABASE klub WITH (FORCE);` and
   `CREATE DATABASE klub OWNER klub;`, then step 6 again.
-- `npm run test:server` can report two failures here that say nothing about the site. A server installed in another
-  language fails the test "a session keeps a 32-byte hash", because that test expects an English error message. And
-  on rare occasions a test ends with `permission denied to terminate process`. In that case the test was removing its
-  database while a background process of PostgreSQL worked in it, and `klub` is not allowed to stop that process. Run
-  the suite again.
+- On rare occasions a test of `npm run test:server` ends with `permission denied to terminate process`. Most likely the
+  test was removing its database while a background process of PostgreSQL worked in it, and `klub` is not allowed to
+  stop that process. This says nothing about the site. Run the suite again.
 
 When it fails:
 

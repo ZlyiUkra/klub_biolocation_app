@@ -1214,3 +1214,13 @@ is a point only the owner can close; nothing below was changed to make a gate pa
     `drop database ... with (force)` in `server/test/helpers/db.ts`. It passed in the four runs that followed, so it
     is a race. The likely other party is an autovacuum worker, which a role that is not a superuser may not end; that
     part was not measured.
+- Later the same day, at the owner's word, the first two tests were fixed, so the two "not fixed" notes above describe
+  the moment before that. The session test now passes one date to both calls. The schema test now compares the error's
+  code and constraint instead of its text. The race of the third test stays, and the guide says what it means.
+- After the fix the suite passed in full on two native servers from the portable package: 647 of 647 with the locale
+  `English_United States.1252` as the superuser, and 647 of 647 with `Russian_Russia.1251` as the role the guide
+  creates. The count is 647 and not 639 because the working tree's `server/dist` still holds a compiled
+  `validate.test.js` whose source is gone: `tsc` does not remove old output, and a fresh copy does not have that file.
+- A third server with the locale `C` failed two tests of the admin search, which passed on the other two servers.
+  PostgreSQL changes the case of Latin letters only under that locale, so a search that ignores case misses Cyrillic
+  text in another case. The guide now says to keep the locale the installer proposes.

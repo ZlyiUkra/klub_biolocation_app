@@ -336,13 +336,17 @@ test(
     const db = await createTestDatabase();
     try {
       const user = await insertAccount(db.pool, "guest");
+      // Changed 2026-11-02: both calls take this one date, as in the other cases of this file. resolveSession read the
+      // real clock here, so the session counted as expired once the date lay far enough behind, and the test then
+      // failed on every machine.
+      const now = new Date("2026-10-11T10:00:00Z");
       const { id, session } = await createSession(
         db.pool,
         { userId: user, status: "guest", limited: true },
-        new Date("2026-10-11T10:00:00Z"),
+        now,
       );
       assert.equal(session.limited, true);
-      assert.equal((await resolveSession(db.pool, id))?.limited, true);
+      assert.equal((await resolveSession(db.pool, id, now))?.limited, true);
     } finally {
       await db.drop();
     }

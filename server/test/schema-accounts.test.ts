@@ -174,9 +174,11 @@ test(
         /sessions_clocks_ordered/,
         "idle past absolute",
       );
+      // Changed 2026-11-02: the error's code and constraint instead of its text. A server installed in another language
+      // words the message in that language, so the old pattern /foreign key|violates/ failed on the right error.
       await assert.rejects(
         db.pool.query("delete from users where id = $1", [user]),
-        /foreign key|violates/,
+        { code: "23503", constraint: "sessions_user_id_fkey" },
         "an account with a session is not deleted by a stray DELETE",
       );
     } finally {
