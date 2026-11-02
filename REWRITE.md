@@ -1173,3 +1173,17 @@ is a point only the owner can close; nothing below was changed to make a gate pa
   superuser, the server reads `DATABASE_URL` alone (`server/src/config.ts`), and the tests need `CREATEDB`
   (`server/test/helpers/db.ts`). The steps themselves were not run: this machine has no PostgreSQL outside the
   container, and Docker was not running.
+
+### 2026-11-02: the no-Docker section, step 2 was unclear
+
+- The colleague opened "SQL Shell (psql)" and typed the `psql -h ...` line of step 2 into it. `psql` was already running
+  there, so it joined that line to `CREATE ROLE` as one statement and rejected it, and the role was not created.
+  `db:migrate` and the site then kept failing with `role "klub" does not exist`. The fault was in the guide, which named
+  the window and the terminal command together without saying that the command is for a terminal only.
+- Step 2 now describes the two ways apart and adds `SHOW port;`. Step 3 says what `psql` answers and what the line
+  `postgres-#` means. Step 4 gives a check that works inside the same window. The failure list gained the syntax error.
+- Measured on Node 20.19 with `--env-file` and the `pg-connection-string` of this repository: in
+  `DATABASE_URL=postgres://klub:"abc123"@...` the driver sees the password with the quotes in it (the same for single
+  quotes), and without quotes it sees `abc123`. A value that starts with a quote, such as `POSTGRES_PASSWORD="abc123"`,
+  loses the quotes. The server does not read `POSTGRES_PASSWORD`, so changing it could not change this error.
+- Still not run from start to end on a server outside the container: this machine has none, and Docker was not running.

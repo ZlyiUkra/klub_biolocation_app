@@ -199,28 +199,45 @@ database, so a PostgreSQL 16 server installed on the machine does the same job. 
    - choose the port 5433, or keep 5432 and write that number in `DATABASE_URL` (step 4) and in the commands below;
    - note the password asked for the `postgres` superuser. It belongs to the installation; it is not the one in
      `.env`.
-2. Open `psql` as that superuser. On Windows `psql` is in the `bin` folder of the installation, and the installer adds
-   "SQL Shell (psql)" to the Start menu.
+2. Open `psql` and sign in as that superuser. `psql` is the program that sends SQL commands to the server. There are
+   two ways to open it. Use one of them, because the two ways differ.
+   - **"SQL Shell (psql)" in the Start menu on Windows.** The window asks for the server, the database, the port, the
+     username and the password, one after another. Press Enter to accept the value in brackets, but type your port at
+     the port question. When the line `postgres=#` appears, `psql` is already running. Do not type the `psql` command
+     shown below into this window, because `psql` would read it as the beginning of an SQL statement.
+   - **A terminal.** On Windows `psql` is in the `bin` folder of the installation. Type this command:
 
-   ```sh
-   psql -h 127.0.0.1 -p 5433 -U postgres
-   ```
+     ```sh
+     psql -h 127.0.0.1 -p 5433 -U postgres
+     ```
 
-3. Create the role and the database the site uses. The password is the one in `DATABASE_URL` of your `.env`; in SQL it
-   goes in single quotes, in `.env` it has no quotes at all.
+   At the line `postgres=#`, type `SHOW port;`. `psql` prints the port the server listens on, and that number must be
+   the port in `DATABASE_URL`.
+
+3. Create the role and the database the site uses. Type the two statements below at the line `postgres=#`, one at a
+   time, and press Enter after each. Each statement ends with a semicolon. If the line changes to `postgres-#`, `psql`
+   is still waiting for the end of a statement, so type `\r` to clear what it holds and start again.
+
+   The password is the one in `DATABASE_URL` of your `.env`. SQL needs the single quotes around it, and they are not
+   part of the password. In `.env` the password has no quotes at all.
 
    ```sql
    CREATE ROLE klub LOGIN CREATEDB PASSWORD '<the password from .env>';
    CREATE DATABASE klub OWNER klub;
    ```
 
+   `psql` answers `CREATE ROLE` to the first statement and `CREATE DATABASE` to the second.
    - `CREATEDB` is for `npm run test:server`: each test makes and drops a database of its own.
    - `OWNER klub` matters: since PostgreSQL 15 only the owner of a database may create tables in its `public` schema,
      which is where `db:migrate` creates them.
    - The role needs nothing more. The migrations use no extension and no statement reserved to a superuser; in the
      container the role is a superuser only because the image makes it one.
 
-4. Check that the role can sign in; this prints `1`:
+4. Check that the role can sign in. In the same `psql` window, type `\c klub klub`, which connects to the database
+   `klub` as the role `klub`. Give the password from `.env` if `psql` asks for it. The line changes to `klub=>`. Then
+   type `SELECT 1;`, which prints `1`, and `\q`, which closes `psql`.
+
+   From a terminal, this one command does the same check:
 
    ```sh
    psql -h 127.0.0.1 -p 5433 -U klub -d klub -c "select 1"
@@ -239,6 +256,9 @@ Differences from the container:
 
 When it fails:
 
+- **`syntax error at or near "psql"`**: the `psql` command of step 2 was typed inside `psql`. Without a semicolon at its
+  end, `psql` joined it to the next line and sent both as one statement, so `CREATE ROLE` did not run. `CREATE DATABASE`
+  then fails with `role "klub" does not exist`, and nothing has been created. Type the two statements of step 3 alone.
 - **`role "klub" does not exist`**: step 3 was not done on the server that `DATABASE_URL` points at (check the port).
   A PostgreSQL installed in another language writes this message in that language, and the terminal may show it as
   unreadable characters; the error is then recognised by `routine: 'InitializeSessionUserId'` printed with it. The
