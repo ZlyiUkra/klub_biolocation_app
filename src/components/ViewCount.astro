@@ -1,0 +1,84 @@
+---
+// One of the visit counter's two numbers (T190 of specs/001-self-hosted-club-site; FR-048; migration 024; the script is
+// src/scripts/view-counter.ts and the routes server/src/views/routes.ts). It replaces the two blocks that the outside
+// counter's script used to fill in, with the same words and, for the page's count, the same eye icon:
+//   scope "site" -> the total of the whole site, "| Total visits: N", printed at the end of the footer line;
+//   scope "page" -> the count of one post or video, the eye icon and "Page Views N", printed in the article's header.
+//
+// Decisions that would otherwise look like mistakes:
+// - Both boxes are written hidden (`display: none`, as the outside counter's footer box was) and the script shows each one
+//   when its number has arrived, so no label is ever left with an empty number.
+// - The number sits in a span of its own that the script finds by `data-view-value`, and the box is found by
+//   `data-view-count`: a component owns the markup its own script binds to, so the script is imported here and nowhere
+//   else. Astro bundles it once for a page that uses this component twice (the footer and the header), as its guide on
+//   script block says (Astro 4.16, "Script processing"). The tag itself is not written in this comment on purpose: Vite's
+//   dependency pre-scan reads the words of a comment as code and stops `astro dev` (README, "npm run build does not catch
+//   everything").
+// - The page's box needs the entry's kind and slug, which the script puts into the route's address; a call without them
+//   is a mistake of the caller and stops the build instead of printing a counter that counts the wrong thing.
+// - `ml-1` on the number is the margin that keeps "Page Views" and the digits apart. The gap used to be a line break in
+//   the markup, which the compiler does not keep as a space ("Page Views18", seen by the owner on 2026-10-11).
+import { ui } from "../i18n/strings";
+import T from "./T.astro";
+
+export interface Props {
+  scope: "site" | "page";
+  /** The entry's kind, as the API names it; needed when `scope` is "page". */
+  kind?: "post" | "video";
+  /** The entry's slug; needed when `scope` is "page". */
+  slug?: string;
+}
+
+const { scope, kind, slug } = Astro.props;
+if (scope === "page" && (kind === undefined || slug === undefined)) {
+  throw new Error('ViewCount with scope="page" needs a kind and a slug.');
+}
+---
+
+{
+  scope === "site" && (
+    <span data-view-count="site" style="display: none;">
+      | <T s={ui.footer_total_visits} />
+      <span data-view-value class="text-gray-600" />
+    </span>
+  )
+}
+{
+  scope === "page" && (
+    <span
+      data-view-count="page"
+      data-entry-kind={kind}
+      data-entry-slug={slug}
+      class="inline-flex items-center whitespace-nowrap"
+      style="display: none;"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="mr-1.5 inline-block h-4 w-4 flex-shrink-0 text-gray-400"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+        />
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+        />
+      </svg>
+      <span class="whitespace-nowrap">
+        <T s={ui.page_views} />
+        <span data-view-value class="ml-1" />
+      </span>
+    </span>
+  )
+}
+
+<script>
+  import "../scripts/view-counter";
+</script>

@@ -33,13 +33,12 @@ body.font-bilingual,
 }
 
 /* Dates and counters align cleanly while prose keeps natural spacing. */
+/* Changed 2026-11-09 (the owner's word: no outside service that counts): the three #busuanzi_value_*
+   selectors that ended this list are gone; no element carries those ids now. */
 time,
 .year-indicator-badge,
 .count-badge,
-.category-count-badge,
-#busuanzi_value_page_pv,
-#busuanzi_value_site_pv,
-#busuanzi_value_site_uv {
+.category-count-badge {
   font-variant-numeric: lining-nums tabular-nums;
 }
 

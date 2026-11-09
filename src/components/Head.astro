@@ -110,7 +110,6 @@ const titleAttrs =
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
-<!-- Speed up Busuanzi counter load -->
 {
   /* Changed 2026-09-17: the note below was moved here out of the HTML comment above. An HTML
   comment is sent to every visitor with the page; an Astro comment is not.
@@ -119,8 +118,13 @@ const titleAttrs =
   ? нужно заменить на Google Analytics / Yandex Metrika
   (для глубокой аналитики, но без красивого публичного счетчика на страницу) */
 }
-<link rel="dns-prefetch" href="//busuanzi.ibruce.info" />
-<link rel="preconnect" href="https://busuanzi.ibruce.info" crossorigin />
+{
+  /* Removed 2026-11-09 (the owner's word: the site uses no outside service that counts): the dns-prefetch
+  and preconnect hints for the outside visit counter's host stood here. So did the HTML comment "Speed up
+  Busuanzi counter load", which stood above the note of 2026-09-17 and was sent to every visitor; the owner
+  left it to this session to delete it, since it named a service that is not on the page. The site's own
+  counter (T190) is on the same host as the page and needs no hint. */
+}
 
 <!-- Favicon configuration (files in public/favicon/, copied from the Hugo static/ folder) -->
 <link
@@ -191,8 +195,10 @@ const titleAttrs =
   handler someone is tempted to add here. */
 }
 
-<!-- Busuanzi page/site view counter (load early to avoid delayed render) -->
-<script
-  is:inline
-  async
-  src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+{
+  /* Removed 2026-11-09 (the owner's word: the site uses no outside service that counts): the script of the
+  outside visit counter was loaded here, from a host the visitor's browser had to reach, under the HTML
+  comment "Busuanzi page/site view counter (load early to avoid delayed render)", deleted with it for the
+  reason given above. The site's own counter is a bundled script of ViewCount.astro, so nothing is loaded
+  from this head (T190). */
+}

@@ -12,6 +12,8 @@ import { site } from "../config";
 import { ui } from "../i18n/strings";
 import { langAttrs } from "../i18n/lang";
 import T from "./T.astro";
+// Added 2026-11-09 (T190): the site's own visit counter, in place of the outside one's footer total.
+import ViewCount from "./ViewCount.astro";
 
 // Получаем социальные ссылки из конфигурации
 const social = site.social;
@@ -116,10 +118,13 @@ const socialContainerClass =
         class="text-gray-600 hover:text-gray-900 hover:underline"
         >hugo-theme-void</a
       >
-      <span id="busuanzi_container_site_pv" style="display: none;">
-        | <T s={ui.footer_total_visits} />
-        <span id="busuanzi_value_site_pv" class="text-gray-600"></span>
-      </span>
+      {
+        /* Changed 2026-11-09 (the owner's word: no outside service that counts; T190): the "Total visits" total
+        that an outside counter's script filled in stood here (the ids busuanzi_container_site_pv and
+        busuanzi_value_site_pv). It is the site's own now: ViewCount.astro prints the box, with the phrase
+        ui.footer_total_visits, and src/scripts/view-counter.ts fills in the number from /api/views. */
+      }
+      <ViewCount scope="site" />
     </div>
   </div>
 </div>

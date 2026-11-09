@@ -21,6 +21,8 @@ import { contentRouter } from "../content/api.js";
 import { commentsRouter } from "../comments/routes.js";
 // Added 2026-10-13 (T186): the six reactions of the same entries.
 import { reactionsRouter } from "../comments/reactions.js";
+// Added 2026-11-09 (T190): the site's own visit counter, which replaced the outside one.
+import { viewsRouter } from "../views/routes.js";
 // Added 2026-10-13 (T107): the feedback form and its list for the panel.
 import { feedbackRouter } from "../feedback/routes.js";
 // Added 2026-10-13 (T110): the superuser's settings (the recipient with its code, the members-block switch).
@@ -112,6 +114,9 @@ export function createApp({
   api.use(commentsRouter({ pool }));
   // Added 2026-10-13 (T186): same entry visibility, same writer rule (person_lecture_access).
   api.use(reactionsRouter({ pool }));
+  // Added 2026-11-09 (T190): POST /views and POST /entries/:kind/:slug/views; the entry route follows the entry's
+  // visibility like the two above, and nobody needs an account to be counted.
+  api.use(viewsRouter({ pool }));
   // Added 2026-10-13 (T107): the feedback form (POST /feedback) and its admin list (GET /admin/feedback); the paths are
   // absolute in the router and it is mounted before the /admin routers below, which would otherwise answer first.
   api.use(feedbackRouter({ pool }));

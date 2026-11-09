@@ -38,6 +38,8 @@ import TocSidebar from "../components/TocSidebar.astro";
 // the tree. The note in package.json says the same.
 import "katex/dist/katex.min.css";
 import ShareWidget from "../components/ShareWidget.astro";
+// Added 2026-11-09 (T190): the page's own view count in the header.
+import ViewCount from "../components/ViewCount.astro";
 import TableOfContents from "../components/TableOfContents.astro";
 import PostNav from "../components/PostNav.astro";
 import Terms from "../components/Terms.astro";
@@ -79,6 +81,12 @@ interface Props {
    * flag and not the entry, so this frame still knows nothing about collections.
    */
   isVideo?: boolean;
+  /**
+   * The entry whose page this is, for the page's own view count: its kind as the API names it and its slug. Added
+   * 2026-11-09 (T190) and set by Post.astro and VideoLayout.astro; it is plain data, so this frame still knows nothing
+   * about collections. Without it the header shows no count of its own.
+   */
+  countedEntry?: { kind: "post" | "video"; slug: string };
 }
 
 const {
@@ -95,6 +103,8 @@ const {
   prev,
   next,
   isVideo,
+  // Added 2026-11-09 (T190): see the prop above.
+  countedEntry,
 } = Astro.props;
 
 const dateMachine = formatDateTime(date);
@@ -251,38 +261,22 @@ const shareDescription = shareTexts.map(cleanShareText).find(Boolean);
               )
             }
 
-            <span
-              id="busuanzi_container_page_pv"
-              class="inline-flex items-center whitespace-nowrap"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="mr-1.5 inline-block h-4 w-4 flex-shrink-0 text-gray-400"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                ></path>
-              </svg>
-              <span class="whitespace-nowrap">
-                {/* Changed 2026-10-12: both languages (was t.page_views). */}
-                <T s={ui.page_views} />
-                {
-                  /* Changed 2026-10-11 (the owner saw "Page Views18"): the line break between the label and this span
-                  is not kept as a space by the compiler, so the gap is a margin, which cannot be lost. */
-                }
-                <span id="busuanzi_value_page_pv" class="ml-1"></span>
-              </span>
-            </span>
+            {
+              /* Changed 2026-11-09 (the owner's word: no outside service that counts; T190): the page's view count
+              stood here, an eye icon, the label ui.page_views and a span (busuanzi_value_page_pv) that an outside
+              counter's script filled in. It is the site's own now: ViewCount.astro prints the same icon and label,
+              and src/scripts/view-counter.ts fills in the number from /api/entries/<kind>/<slug>/views. A caller
+              that gives no entry gets no count. */
+            }
+            {
+              countedEntry && (
+                <ViewCount
+                  scope="page"
+                  kind={countedEntry.kind}
+                  slug={countedEntry.slug}
+                />
+              )
+            }
 
             <ShareWidget
               url={new URL(Astro.url.pathname, Astro.site).toString()}

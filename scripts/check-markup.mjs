@@ -232,6 +232,71 @@ const withNewCommentsMarked = (html) =>
     return "<!-- comments block -->";
   });
 
+// 7. Added 2026-11-09 (the owner's word: the site uses no outside service that counts; T190): the visit counter is the
+//    site's own now and no longer the old application's. The old pages carry the outside counter - its script and two
+//    connection hints in the head, each under an HTML comment that names it, the total in the footer and the count in the
+//    header of an article. The new pages carry the two boxes of the site's own counter (`data-view-count`, filled in by a
+//    script after the page loads) and nothing else of it. The old parts are taken out of the OLD document and the new
+//    boxes out of the NEW one, so the rest of the page is still compared byte for byte, and the number of documents and
+//    parts on each side is printed, so the exception cannot widen. The gap class of note 1 above finds nothing to rewrite
+//    any more, because the old counter is taken out before it runs.
+const oldCounterHints =
+  /(?:<!-- Speed up Busuanzi counter load -->)?<link rel="dns-prefetch" href="\/\/busuanzi\.ibruce\.info"><link rel="preconnect" href="https:\/\/busuanzi\.ibruce\.info" crossorigin>/;
+const oldCounterScript =
+  /(?:<!-- Busuanzi page\/site view counter \(load early to avoid delayed render\) -->)?<script async src="\/\/busuanzi\.ibruce\.info\/[^"]*"><\/script>/;
+const oldCounterSite =
+  /<span id="busuanzi_container_site_pv"[\s\S]*?<span id="busuanzi_value_site_pv"[^>]*><\/span>\s*<\/span>/;
+const oldCounterPage =
+  /<span id="busuanzi_container_page_pv"[\s\S]*?<span id="busuanzi_value_page_pv"[^>]*><\/span>\s*<\/span>\s*<\/span>/;
+let counterDocuments = 0;
+let counterParts = 0;
+const withoutOldCounter = (html) => {
+  let found = 0;
+  const stripped = [
+    oldCounterHints,
+    oldCounterScript,
+    oldCounterSite,
+    oldCounterPage,
+  ].reduce(
+    (doc, part) =>
+      doc.replace(part, () => {
+        found++;
+        return "";
+      }),
+    html,
+  );
+  if (found > 0) {
+    counterDocuments++;
+    counterParts += found;
+  }
+  return stripped;
+};
+
+// The new side of note 7: the two boxes of the site's own counter, the footer's and the article header's. Each ends with
+// its number's span, so the first closing tags after it are the box's own.
+const newCounterSite =
+  /<span data-view-count="site"[\s\S]*?<span data-view-value[^>]*><\/span>\s*<\/span>/;
+const newCounterPage =
+  /<span data-view-count="page"[\s\S]*?<span data-view-value[^>]*><\/span>\s*<\/span>\s*<\/span>/;
+let newCounterDocuments = 0;
+let newCounterBoxes = 0;
+const withoutNewCounter = (html) => {
+  let found = 0;
+  const stripped = [newCounterSite, newCounterPage].reduce(
+    (doc, box) =>
+      doc.replace(box, () => {
+        found++;
+        return "";
+      }),
+    html,
+  );
+  if (found > 0) {
+    newCounterDocuments++;
+    newCounterBoxes += found;
+  }
+  return stripped;
+};
+
 // Added 2026-10-12 (T180): the third level of equality described in the header. Block elements only, on purpose: a
 // space between two inline elements is shown, so it stays.
 const blockTags =
@@ -338,7 +403,10 @@ for (const route of routes) {
         withoutMemberKey(
           withViewsGap(
             withNewSpelling(
-              withoutOldFlagBlock(normalise(fs.readFileSync(oldFile, "utf8"))),
+              withoutOldFlagBlock(
+                // Added 2026-11-09 (note 7 above): the outside counter is taken out of the old document first.
+                withoutOldCounter(normalise(fs.readFileSync(oldFile, "utf8"))),
+              ),
             ),
           ),
         ),
@@ -347,7 +415,10 @@ for (const route of routes) {
   );
   const after = withNewCommentsMarked(
     withNewContactFormMarked(
-      withContactScriptMarked(withoutPlayerTemplate(normalise(rawAfter))),
+      // Added 2026-11-09 (T190, note 7 above): the boxes of the site's own counter are taken out of the new document.
+      withContactScriptMarked(
+        withoutPlayerTemplate(withoutNewCounter(normalise(rawAfter))),
+      ),
     ),
   );
   if (before === after) {
@@ -533,6 +604,19 @@ if (viewsGapApplied > 0) {
     "views counter gap (09687fa) applied to " +
       viewsGapApplied +
       " old document(s) before comparing",
+  );
+}
+if (counterDocuments > 0 || newCounterDocuments > 0) {
+  console.log(
+    "visit counter (2026-11-09, T190): the outside one taken out of " +
+      counterDocuments +
+      " old document(s), " +
+      counterParts +
+      " part(s) in all, and the site's own boxes out of " +
+      newCounterDocuments +
+      " new document(s), " +
+      newCounterBoxes +
+      " box(es) in all, before comparing",
   );
 }
 if (playerTemplatesRemoved > 0) {

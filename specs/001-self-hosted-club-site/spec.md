@@ -470,6 +470,13 @@ interface text is left in the other language.
   beside its comments, in the look of the previous comment service (added 2026-10-13, owner): anyone who may see the
   entry reads the counts; an account that may write comments gives one reaction per entry, and may change or remove
   it; the previous service's reactions are not carried over (FR-041).
+- **FR-048**: The site MUST count its own visits and MUST NOT ask an outside service to (added 2026-11-09, owner): every
+  load of a page raises one number for the whole site and, for a post or a video, one for that page, as the outside
+  counter it replaces did; the footer prints the first as "Total visits" and the header of an article the second as
+  "Page Views"; nothing about the visitor is stored; the numbers start at zero (the outside counter's are not carried
+  over); a program that is not a person's browser, and an address that has added 120 loads in ten minutes, are answered
+  with the numbers and not counted; an entry the viewer may not see is a 404 and counts nothing; the admin and sign-in
+  pages are not counted.
 - **FR-033**: The feedback form MUST store every accepted message before anything else, list it on an admin page, and
   mail it to the recipient address; a mail failure MUST lose nothing.
 - **FR-034**: The feedback form MUST refuse bursts, bot fills, oversized bodies and cross-site posts, and MUST never
@@ -483,8 +490,9 @@ interface text is left in the other language.
 **Reach, safety, operation**
 
 - **FR-037**: Reading, signing in and playing a lecture MUST work from a network that blocks the throttled outside
-  services, with no VPN; only the outside services the owner kept (the analytics counter, the web fonts, the visit
-  counter and the placeholder embeds) may be on a visitor's path.
+  services, with no VPN; only the outside services the owner kept (the analytics counter, the web fonts and the
+  placeholder embeds) may be on a visitor's path. Changed 2026-11-09, the owner's word: the outside visit counter is
+  replaced by the site's own (FR-048); the site uses no outside service that counts, confirms or permits.
 - **FR-038**: No secret MUST enter the repository or any value shipped to the browser.
 - **FR-039**: The switch MUST cost visitors no downtime: the old site runs unchanged until the final import, and then
   every one of its pages redirects to the new address.
@@ -581,7 +589,8 @@ interface text is left in the other language.
 - Out of scope: payments on the site, HLS or transcoding, translations of the content (the interface is in two
   languages since 2026-10-12, FR-043), an inbound mail server, importing the Disqus history, and any change of design
   the owner has not ordered.
-- External services that stay by the owner's decision: Yandex Metrika, Google Fonts and the visit counter; the 18
+- External services that stay by the owner's decision: Yandex Metrika (the colleague's, kept on 2026-11-09) and Google
+  Fonts (the outside visit counter was replaced by the site's own on 2026-11-09, FR-048); the 18
   public sample videos keep their placeholder YouTube ids until MP4 files exist. These are the only outside
   dependencies on a visitor's path.
 - Members' accounts from the current sign-in provider are not migrated with their passwords (a password cannot be

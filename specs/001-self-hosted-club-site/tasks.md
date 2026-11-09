@@ -2061,6 +2061,30 @@ request; the source is `klub_biolocation_astro`, branch `refactor-app`, from `2b
       149 routes differ (the feedback form's attribute and script are a named difference now, and /admin/posts/ joined
       /admin/users/ among the pages that answer 404 to a guest, which the check had not been told since T099),
       `check:lang` 50, `check:admin-posts` 41, `check:admin-videos` 33, server tests 560 of 561 (the known TODO).
+- [x] T190 [US10] The site's own visit counter in place of the outside one (the owner's word, 2026-11-09: the project uses
+      no outside service that counts, confirms or permits; fonts stay, and so do the video embeds and Yandex Metrika, which
+      is the colleague's). Decided with the owner: every load of a page counts, as the outside counter counted, not one
+      count per visitor; nothing about the visitor is stored; the numbers start at zero. FR-048.
+      Done 2026-11-09. The outside counter (Busuanzi) is gone: its script, its two connection hints and the two HTML
+      comments that named it from `Head.astro`, the footer total, the article's page count and the style selectors in
+      `main.css`. Its replacement: migration 024 (`site_views`, one row; `entry_views`, a row from an entry's first load),
+      `server/src/access/views.ts`, `server/src/views/routes.ts` (`POST /api/views` and
+      `POST /api/entries/:kind/:slug/views`; a program that is not a person's browser and an address past 120 loads in ten
+      minutes get the numbers and are not counted; an entry the viewer may not see is a 404 and counts nothing),
+      `src/components/ViewCount.astro` and `src/scripts/view-counter.ts`, the `countedEntry` prop of `ArticleLayout.astro`
+      set by `Post.astro` and `VideoLayout.astro`, note 7 of `scripts/check-markup.mjs`. Tests first: `server/test/views.test.ts`,
+      9 cases (twenty loads at the same instant are twenty; the window; the refusal of a write that is not a JSON request
+      from the site). Documents: README, FR-037 and FR-048 of the spec, X-03 and N-06 of the parity inventory.
+      Checked: `astro check` 0 errors; `astro dev` starts on a spare port; the build is green and `check:bundles` passes;
+      `check:secrets` clean; the server's `tsc` is clean. End to end on a spare port with a throwaway database and a copy of
+      the build, in a real Edge: the article printed site 4 and page 2, the home page site 5 and no page box, the sign-in
+      page nothing, and the two stored numbers (5 and 2) were what the pages had printed; the raw pages hold no outside
+      address of the counter; the throwaway database, the copy and the port were removed. The whole server suite: 656 of
+      656 (the 647 of T128 and the 9 of this task).
+      Not done and not claimed: `npm run check:markup` was not run (it needs the old repository's build and a server on the
+      old content); its two new patterns were checked against the real pages instead. The numbers of the outside counter
+      are not carried over, by the owner's decision. Documentation servers: astro-docs (1 search), express-docs (2),
+      postgresql-docs (2), node-postgres-docs (2), mdn-docs (1).
 
 ---
 

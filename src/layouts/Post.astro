@@ -33,6 +33,9 @@ interface Props {
 
 const { post, headings, prev, next } = Astro.props;
 const data = post;
+// Added 2026-11-09 (T190): the page's own view count is counted under the kind "post" and this post's slug; the frame takes
+// them as its `countedEntry` prop below. The note is here and not in the markup because a comment in the template leaves a
+// space in the page, which `npm run check:markup` would report.
 // Added 2026-10-12: "3 мин чтения" / "3 min read", one string per language.
 const timeLabel: Phrase = {
   ru: `${post.readingMinutes} ${ui.reading_time.ru}`,
@@ -53,6 +56,7 @@ const timeLabel: Phrase = {
   headings={headings}
   prev={prev}
   next={next}
+  countedEntry={{ kind: "post", slug: post.slug }}
 >
   <slot />
 </ArticleLayout>

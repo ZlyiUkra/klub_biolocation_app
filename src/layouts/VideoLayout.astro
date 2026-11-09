@@ -73,6 +73,9 @@ const endedOn =
 // of the page a guest cannot see. A member sees those headings in the text, not in the contents.
 // Changed 2026-10-10 (T139): the list arrives without them, see the import note above.
 const tocHeadings = headings;
+// Added 2026-11-09 (T190): the page's own view count is counted under the kind "video" and this video's slug; the frame
+// takes them as its `countedEntry` prop below. The note is here and not in the markup because a comment in the template
+// leaves a space in the page, which `npm run check:markup` would report.
 ---
 
 <ArticleLayout
@@ -89,6 +92,7 @@ const tocHeadings = headings;
   prev={prev}
   next={next}
   isVideo={true}
+  countedEntry={{ kind: "video", slug: video.slug }}
 >
   {
     /* The colleague's note, kept from the route file where the player used to be:
